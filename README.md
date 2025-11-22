@@ -6,17 +6,41 @@
 - Persists progress in `$HOME/.cosmos-analyzer-shipper/agent-status.json` to avoid duplicates.
 - Defers sends under high CPU/network; hard interval forces progress.
 
-## Build
+## Installation
+
+### Pre-built Binaries
+Download the latest release from the [Releases page](https://github.com/bft-labs/cosmos-analyzer-shipper/releases).
+
+### Docker
 ```shell
-go build ./cmd/walship
+docker pull ghcr.io/bft-labs/cosmos-analyzer-shipper:latest
 ```
 
 ## Configuration
-- Default path: `$HOME/.walship/config.toml` (unchanged config path for now)
-- Override path: `--config /path/to/config.toml`
-- Flags override file values if provided.
+Configuration can be provided via:
+1. **Flags**: Highest priority (e.g., `--remote-url`)
+2. **Environment Variables**: `WALSHIP_` prefix (e.g., `WALSHIP_REMOTE_URL`)
+3. **Config File**: Default `$HOME/.walship/config.toml` or via `--config`
+
+### Environment Variables
+All flags have a corresponding environment variable with the `WALSHIP_` prefix.
+- `WALSHIP_REMOTE_URL`
+- `WALSHIP_AUTH_KEY`
+- `WALSHIP_WAL_DIR`
+- `WALSHIP_NODE`
+- ...and so on.
 
 ## Run examples
+
+### Docker
+```shell
+docker run -d \
+  -v /var/log/cometbft/wal:/wal \
+  -e WALSHIP_WAL_DIR=/wal \
+  -e WALSHIP_REMOTE_URL=http://backend:8080/... \
+  -e WALSHIP_AUTH_KEY=secret \
+  ghcr.io/bft-labs/cosmos-analyzer-shipper:latest
+```
 
 ### Explicit endpoint
 ```shell
