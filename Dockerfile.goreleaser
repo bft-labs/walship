@@ -1,0 +1,16 @@
+# Dockerfile for GoReleaser
+# GoReleaser provides pre-built binaries, so we don't need to build from source
+FROM alpine:latest
+
+RUN apk add --no-cache ca-certificates tzdata
+
+WORKDIR /app
+
+# GoReleaser will copy the pre-built binary as 'walship'
+COPY walship /app/walship
+
+# Create a non-root user
+RUN addgroup -S walship && adduser -S walship -G walship
+USER walship
+
+ENTRYPOINT ["/app/walship"]
