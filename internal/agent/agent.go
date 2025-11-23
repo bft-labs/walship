@@ -193,6 +193,8 @@ func trySend(cfg Config, httpClient *http.Client, batch *[]batchFrame, batchByte
 	}
 	req.Header.Set("X-Agent-Hostname", hostname())
 	req.Header.Set("X-Agent-OSArch", runtime.GOOS+"/"+runtime.GOARCH)
+	req.Header.Set("X-Cosmos-ChainId", cfg.ChainID)
+	req.Header.Set("X-Cosmos-NodeId", cfg.NodeID)
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
