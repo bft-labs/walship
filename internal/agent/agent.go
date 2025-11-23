@@ -198,14 +198,19 @@ func trySend(cfg Config, httpClient *http.Client, batch *[]batchFrame, batchByte
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error sending batch: %v\n", err)
 		back.Sleep()
 		return
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode/100 != 2 {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Fprintf(os.Stderr, "Server returned error: status=%d body=%s\n", resp.StatusCode, string(body))
 		back.Sleep()
 		return
 	}
+
+	fmt.Fprintf(os.Stderr, "Successfully sent batch of %d frames (%d bytes)\n", len(*batch), *batchBytes)
 
 	// Success: commit idx offset
 	st.IdxOffset += advance
@@ -214,6 +219,7 @@ func trySend(cfg Config, httpClient *http.Client, batch *[]batchFrame, batchByte
 	st.LastSendAt = time.Now()
 	st.LastCommitAt = st.LastSendAt
 	_ = saveState(cfg.StateDir, *st)
+
 	// reset batch
 	*batch = (*batch)[:0]
 	*batchBytes = 0
@@ -226,5 +232,3 @@ func hostname() string {
 	}
 	return "unknown"
 }
-
-// no-op
