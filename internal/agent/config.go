@@ -2,6 +2,10 @@ package agent
 
 import (
 	"fmt"
+	"net/url"
+	"os"
+	pathpkg "path"
+	"path/filepath"
 	"strconv"
 	"time"
 )
@@ -44,6 +48,70 @@ type Config struct {
 	Verify         bool
 	Meta           bool
 	Once           bool
+}
+
+// DefaultConfig returns a Config with default values.
+func DefaultConfig() Config {
+	return Config{
+		NodeID:         "default",
+		PollInterval:   500 * time.Millisecond,
+		SendInterval:   5 * time.Second,
+		HardInterval:   10 * time.Second,
+		HTTPTimeout:    15 * time.Second,
+		CPUThreshold:   0.85,
+		NetThreshold:   0.70,
+		IfaceSpeedMbps: 1000,
+		MaxBatchBytes:  4 << 20, // 4MB
+		StateDir:       defaultStateDir(),
+		AuthKey:        os.Getenv("MEMAGENT_AUTH_KEY"),
+	}
+}
+
+func defaultStateDir() string {
+	if home, err := os.UserHomeDir(); err == nil {
+		return filepath.Join(home, ".walship")
+	}
+	return "."
+}
+
+// Validate checks the configuration for errors and sets derived defaults.
+func (c *Config) Validate() error {
+	if c.WALDir == "" {
+		if c.Root != "" && c.NodeID != "" {
+			// fallback derived layout
+			c.WALDir = fmt.Sprintf("%s/data/log.wal/node-%s", c.Root, c.NodeID)
+		} else if c.Root != "" {
+			c.WALDir = fmt.Sprintf("%s/data/log.wal", c.Root)
+		} else {
+			return fmt.Errorf("wal-dir is required (or root)")
+		}
+	}
+
+	if c.RemoteURL == "" {
+		if c.RemoteBase != "" && c.Network != "" {
+			node := c.RemoteNode
+			if node == "" {
+				node = c.NodeID
+			}
+			base := c.RemoteBase
+			// ensure no trailing slash
+			if len(base) > 0 && base[len(base)-1] == '/' {
+				base = base[:len(base)-1]
+			}
+			c.RemoteURL = base + pathpkg.Join("", "/v1/ingest/", url.PathEscape(c.Network), "/", url.PathEscape(node), "/wal-frames")
+		} else {
+			return fmt.Errorf("remote-url is required (or remote-base + network)")
+		}
+	}
+
+	if c.PollInterval <= 0 {
+		return fmt.Errorf("poll interval must be positive")
+	}
+	if c.SendInterval <= 0 {
+		return fmt.Errorf("send interval must be positive")
+	}
+
+	return nil
 }
 
 // configSetter helps apply configuration values while respecting flag precedence.

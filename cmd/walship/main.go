@@ -3,10 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"os"
-	pathpkg "path"
-	"time"
 
 	"github.com/spf13/cobra"
 	pflag "github.com/spf13/pflag"
@@ -15,7 +12,7 @@ import (
 )
 
 func main() {
-	var cfg agent.Config
+	cfg := agent.DefaultConfig()
 	var cfgPath string
 
 	root := &cobra.Command{
@@ -47,33 +44,18 @@ func main() {
 			// These override file config but are overridden by flags (checked via changed map)
 			agent.ApplyEnvConfig(&cfg, changed)
 
-			if cfg.WALDir == "" {
-				if cfg.Root != "" && cfg.NodeID != "" {
-					// fallback derived layout
-					cfg.WALDir = fmt.Sprintf("%s/data/log.wal/node-%s", cfg.Root, cfg.NodeID)
-				} else if cfg.Root != "" {
-					cfg.WALDir = fmt.Sprintf("%s/data/log.wal", cfg.Root)
-				}
+			// Validate and set derived defaults
+			if err := cfg.Validate(); err != nil {
+				return err
 			}
-			if cfg.RemoteURL == "" && cfg.RemoteBase != "" && cfg.Network != "" {
-				node := cfg.RemoteNode
-				if node == "" {
-					node = cfg.NodeID
-				}
-				base := cfg.RemoteBase
-				// ensure no trailing slash
-				if len(base) > 0 && base[len(base)-1] == '/' {
-					base = base[:len(base)-1]
-				}
-				cfg.RemoteURL = base + pathpkg.Join("", "/v1/ingest/", url.PathEscape(cfg.Network), "/", url.PathEscape(node), "/wal-frames")
+
+			// Log configuration (masking auth key)
+			logCfg := cfg
+			if len(logCfg.AuthKey) > 0 {
+				logCfg.AuthKey = "*****"
 			}
-			if cfg.StateDir == "" {
-				if home, err := os.UserHomeDir(); err == nil {
-					cfg.StateDir = home + "/.walship"
-				} else {
-					cfg.StateDir = "."
-				}
-			}
+			fmt.Fprintf(os.Stderr, "Configuration: %+v\n", logCfg)
+
 			if err := agent.Run(context.Background(), cfg); err != nil {
 				return err
 			}
@@ -83,31 +65,31 @@ func main() {
 
 	// Flags
 	root.Flags().StringVar(&cfgPath, "config", "", "path to config file (default: $HOME/.walship/config.toml)")
-	root.Flags().StringVar(&cfg.Root, "root", "", "application root (contains data/) [fallback for WAL dir]")
-	root.Flags().StringVar(&cfg.NodeID, "node", "default", "node id (directory suffix)")
-	root.Flags().StringVar(&cfg.WALDir, "wal-dir", "", "WAL directory containing .idx/.gz pairs")
+	root.Flags().StringVar(&cfg.Root, "root", cfg.Root, "application root (contains data/) [fallback for WAL dir]")
+	root.Flags().StringVar(&cfg.NodeID, "node", cfg.NodeID, "node id (directory suffix)")
+	root.Flags().StringVar(&cfg.WALDir, "wal-dir", cfg.WALDir, "WAL directory containing .idx/.gz pairs")
 
-	root.Flags().StringVar(&cfg.RemoteURL, "remote-url", "", "remote HTTP(S) endpoint to POST frames (overrides base/network/node)")
-	root.Flags().StringVar(&cfg.RemoteBase, "remote-base", "", "remote base URL (e.g., http://host:8080)")
-	root.Flags().StringVar(&cfg.Network, "network", "", "network identifier for ingest route")
-	root.Flags().StringVar(&cfg.RemoteNode, "remote-node", "", "node identifier for ingest route (defaults to --node)")
-	root.Flags().StringVar(&cfg.AuthKey, "auth-key", os.Getenv("MEMAGENT_AUTH_KEY"), "authorization key (or MEMAGENT_AUTH_KEY)")
+	root.Flags().StringVar(&cfg.RemoteURL, "remote-url", cfg.RemoteURL, "remote HTTP(S) endpoint to POST frames (overrides base/network/node)")
+	root.Flags().StringVar(&cfg.RemoteBase, "remote-base", cfg.RemoteBase, "remote base URL (e.g., http://host:8080)")
+	root.Flags().StringVar(&cfg.Network, "network", cfg.Network, "network identifier for ingest route")
+	root.Flags().StringVar(&cfg.RemoteNode, "remote-node", cfg.RemoteNode, "node identifier for ingest route (defaults to --node)")
+	root.Flags().StringVar(&cfg.AuthKey, "auth-key", cfg.AuthKey, "authorization key (or MEMAGENT_AUTH_KEY)")
 
-	root.Flags().DurationVar(&cfg.PollInterval, "poll", 500*time.Millisecond, "poll interval when idle")
-	root.Flags().DurationVar(&cfg.SendInterval, "send-interval", 5*time.Second, "soft send interval")
-	root.Flags().DurationVar(&cfg.HardInterval, "hard-interval", 10*time.Second, "hard send interval (override gating)")
-	root.Flags().IntVar(&cfg.MaxBatchBytes, "max-batch-bytes", 4<<20, "maximum compressed bytes per batch")
+	root.Flags().DurationVar(&cfg.PollInterval, "poll", cfg.PollInterval, "poll interval when idle")
+	root.Flags().DurationVar(&cfg.SendInterval, "send-interval", cfg.SendInterval, "soft send interval")
+	root.Flags().DurationVar(&cfg.HardInterval, "hard-interval", cfg.HardInterval, "hard send interval (override gating)")
+	root.Flags().IntVar(&cfg.MaxBatchBytes, "max-batch-bytes", cfg.MaxBatchBytes, "maximum compressed bytes per batch")
 
-	root.Flags().Float64Var(&cfg.CPUThreshold, "cpu-threshold", 0.85, "max CPU usage fraction before delaying send")
-	root.Flags().Float64Var(&cfg.NetThreshold, "net-threshold", 0.70, "max network usage fraction before delaying send")
-	root.Flags().StringVar(&cfg.Iface, "iface", "", "network interface to monitor (optional)")
-	root.Flags().IntVar(&cfg.IfaceSpeedMbps, "iface-speed", 1000, "interface speed in Mbps (used for utilization)")
+	root.Flags().Float64Var(&cfg.CPUThreshold, "cpu-threshold", cfg.CPUThreshold, "max CPU usage fraction before delaying send")
+	root.Flags().Float64Var(&cfg.NetThreshold, "net-threshold", cfg.NetThreshold, "max network usage fraction before delaying send")
+	root.Flags().StringVar(&cfg.Iface, "iface", cfg.Iface, "network interface to monitor (optional)")
+	root.Flags().IntVar(&cfg.IfaceSpeedMbps, "iface-speed", cfg.IfaceSpeedMbps, "interface speed in Mbps (used for utilization)")
 
-	root.Flags().StringVar(&cfg.StateDir, "state-dir", "", "state directory for agent-status.json")
-	root.Flags().DurationVar(&cfg.HTTPTimeout, "timeout", 15*time.Second, "HTTP timeout")
-	root.Flags().BoolVar(&cfg.Verify, "verify", false, "verify CRC/line counts while reading (debug)")
-	root.Flags().BoolVar(&cfg.Meta, "meta", false, "print frame metadata to stderr (debug)")
-	root.Flags().BoolVar(&cfg.Once, "once", false, "process available frames and exit")
+	root.Flags().StringVar(&cfg.StateDir, "state-dir", cfg.StateDir, "state directory for agent-status.json")
+	root.Flags().DurationVar(&cfg.HTTPTimeout, "timeout", cfg.HTTPTimeout, "HTTP timeout")
+	root.Flags().BoolVar(&cfg.Verify, "verify", cfg.Verify, "verify CRC/line counts while reading (debug)")
+	root.Flags().BoolVar(&cfg.Meta, "meta", cfg.Meta, "print frame metadata to stderr (debug)")
+	root.Flags().BoolVar(&cfg.Once, "once", cfg.Once, "process available frames and exit")
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "walship: %v\n", err)
