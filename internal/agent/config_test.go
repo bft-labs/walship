@@ -15,6 +15,9 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.PollInterval != 500*time.Millisecond {
 		t.Errorf("PollInterval = %v, want 500ms", cfg.PollInterval)
 	}
+	if cfg.ConfigPollInterval != 1*time.Minute {
+		t.Errorf("ConfigPollInterval = %v, want 1m", cfg.ConfigPollInterval)
+	}
 	if cfg.MaxBatchBytes != 4<<20 {
 		t.Errorf("MaxBatchBytes = %v, want 4MB", cfg.MaxBatchBytes)
 	}
