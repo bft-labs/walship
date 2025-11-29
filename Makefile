@@ -1,4 +1,6 @@
-.PHONY: build docker-build docker-run release test test-coverage clean help
+.PHONY: build docker-build docker-run release test test-coverage clean install uninstall help
+
+BINDIR ?= $(GOPATH)/bin
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -8,6 +10,12 @@ help: ## Show this help message
 
 build: ## Build the walship binary
 	go build -o walship ./cmd/walship
+
+install: ## Install walship to $$GOPATH/bin
+	go install ./cmd/walship
+
+uninstall: ## Uninstall walship
+	rm -f $(BINDIR)/walship
 
 test: ## Run all tests
 	go test -v ./...
@@ -22,18 +30,15 @@ clean: ## Clean build artifacts and test outputs
 	rm -f coverage.out coverage.html
 	rm -rf dist/
 
-# Build Docker image locally
 docker-build:
 	docker build -t walship .
 
-# Run Docker container (example with dummy env vars)
 docker-run:
 	docker run --rm \
-		-e WALSHIP_REMOTE_URL=http://localhost:8080 \
+		-e WALSHIP_SERVICE_URL=http://localhost:8080/v1/ingest \
 		-e WALSHIP_AUTH_KEY=test \
 		walship
 
-# Create a new tag to trigger release (usage: make release v=v0.1.0)
 release:
 	git tag $(v)
 	git push origin $(v)
