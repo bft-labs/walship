@@ -82,26 +82,31 @@ You must provide **either**:
 - **OR** `--wal-dir` + `--chain-id` + `--node-id` explicitly
 
 And:
-- `--remote-url` or (`--remote-base` + `--network`)
+- `--remote-url` or `--remote-base`
 
 ### Environment Variables
 
 All CLI flags have a `WALSHIP_` prefixed environment variable equivalent:
 
-| Flag | Environment Variable | Description |
-|------|---------------------|-------------|
-| `--node-home` | `WALSHIP_NODE_HOME` | Node home directory (contains `config/`, `data/`) |
-| `--chain-id` | `WALSHIP_CHAIN_ID` | Override chain ID from genesis.json |
-| `--node-id` | `WALSHIP_NODE` | Override node ID (defaults to "default") |
-| `--wal-dir` | `WALSHIP_WAL_DIR` | WAL directory path |
-| `--remote-url` | `WALSHIP_REMOTE_URL` | Full remote endpoint URL |
-| `--remote-base` | `WALSHIP_REMOTE_BASE` | Remote base URL |
-| `--network` | `WALSHIP_NETWORK` | Network identifier |
-| `--auth-key` | `WALSHIP_AUTH_KEY` | Authorization key |
-| `--poll` | `WALSHIP_POLL_INTERVAL` | Poll interval (e.g., "500ms") |
-| `--send-interval` | `WALSHIP_SEND_INTERVAL` | Soft send interval |
-| `--cpu-threshold` | `WALSHIP_CPU_THRESHOLD` | Max CPU usage (0.0-1.0) |
-| `--net-threshold` | `WALSHIP_NET_THRESHOLD` | Max network usage (0.0-1.0) |
+| Flag | Environment Variable | Default | Description |
+|------|---------------------|---------|-------------|
+| `--node-home` | `WALSHIP_NODE_HOME` | (required) | Node home directory (contains `config/`, `data/`) |
+| `--chain-id` | `WALSHIP_CHAIN_ID` | (auto-discovered) | Override chain ID from genesis.json |
+| `--node` | `WALSHIP_NODE` | `"default"` | Override node ID |
+| `--wal-dir` | `WALSHIP_WAL_DIR` | (auto-discovered) | WAL directory path |
+| `--remote-url` | `WALSHIP_REMOTE_URL` | (required) | Full remote endpoint URL |
+| `--remote-base` | `WALSHIP_REMOTE_BASE` | `""` | Remote base URL (auto-appends `/v1/ingest/wal-frames`) |
+| `--auth-key` | `WALSHIP_AUTH_KEY` | `""` | Authorization key |
+| `--poll` | `WALSHIP_POLL_INTERVAL` | `"500ms"` | Poll interval when idle |
+| `--send-interval` | `WALSHIP_SEND_INTERVAL` | `"5s"` | Soft send interval |
+| `--hard-interval` | `WALSHIP_HARD_INTERVAL` | `"10s"` | Hard send interval (override gating) |
+| `--timeout` | `WALSHIP_HTTP_TIMEOUT` | `"15s"` | HTTP request timeout |
+| `--cpu-threshold` | `WALSHIP_CPU_THRESHOLD` | `0.85` | Max CPU usage (0.0-1.0) before delaying send |
+| `--net-threshold` | `WALSHIP_NET_THRESHOLD` | `0.70` | Max network usage (0.0-1.0) before delaying send |
+| `--iface` | `WALSHIP_IFACE` | `""` | Network interface to monitor (optional) |
+| `--iface-speed` | `WALSHIP_IFACE_SPEED` | `1000` | Interface speed in Mbps |
+| `--max-batch-bytes` | `WALSHIP_MAX_BATCH_BYTES` | `4194304` | Maximum compressed bytes per batch (4MB) |
+| `--state-dir` | `WALSHIP_STATE_DIR` | `$HOME/.walship` | State directory for agent-status.json |
 
 ### Config File Example
 
@@ -109,7 +114,7 @@ Create `$HOME/.walship/config.toml`:
 
 ```toml
 node_home = "/path/to/node"
-remote_url = "http://backend:8080/v1/ingest/mychain/validator-01/wal-frames"
+remote_url = "https://api.example.com/v1/ingest/wal-frames"
 auth_key = "your-secret-key"
 
 poll_interval = "500ms"
@@ -130,11 +135,14 @@ Automatically discovers chain-id and node-id from node files:
 ./walship \
   --node-home /home/validator/.osmosisd \
   --remote-base https://api.example.com \
-  --network mainnet \
   --auth-key your-secret-key
 ```
 URL becomes:
-`https://api.example.com/v1/ingest/mainnet/{node-id}/wal-frames`
+`https://api.example.com/v1/ingest/wal-frames`
+
+Node metadata (chain-id, node-id) is sent via headers:
+- `X-Cosmos-Analyzer-Chain-Id`
+- `X-Cosmos-Analyzer-Node-Id`
 
 
 ### Docker
