@@ -1,0 +1,176 @@
+package agent
+
+import (
+	"os"
+	"testing"
+	"time"
+)
+
+func TestDefaultConfig(t *testing.T) {
+	cfg := DefaultConfig()
+
+	if cfg.NodeID != "default" {
+		t.Errorf("NodeID = %v, want default", cfg.NodeID)
+	}
+	if cfg.PollInterval != 500*time.Millisecond {
+		t.Errorf("PollInterval = %v, want 500ms", cfg.PollInterval)
+	}
+	if cfg.MaxBatchBytes != 4<<20 {
+		t.Errorf("MaxBatchBytes = %v, want 4MB", cfg.MaxBatchBytes)
+	}
+	// Check if AuthKey default is respected (depends on env, but logic is there)
+	if val := os.Getenv("MEMAGENT_AUTH_KEY"); val != "" {
+		if cfg.AuthKey != val {
+			t.Errorf("AuthKey = %v, want %v (from env)", cfg.AuthKey, val)
+		}
+	}
+}
+
+func TestConfig_Validate(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  Config
+		wantErr bool
+	}{
+		{
+			name: "valid minimal config",
+			config: Config{
+				NodeHome:     "/tmp/root",
+				WALDir:       "/tmp/wal",
+				ServiceURL:    "http://localhost:8080",
+				PollInterval: time.Second,
+				SendInterval: time.Second,
+			},
+			wantErr: false,
+		},
+		{
+			name: "missing wal dir and node-home",
+			config: Config{
+				ServiceURL:    "http://localhost:8080",
+				PollInterval: time.Second,
+				SendInterval: time.Second,
+			},
+			wantErr: true,
+		},
+		{
+			name: "derived wal dir from node-home",
+			config: Config{
+				NodeHome:     "/tmp/root",
+				NodeID:       "default",
+				ServiceURL:    "http://localhost:8080",
+				PollInterval: time.Second,
+				SendInterval: time.Second,
+			},
+			wantErr: false,
+		},
+		{
+			name: "missing remote url and base",
+			config: Config{
+				WALDir:       "/tmp/wal",
+				PollInterval: time.Second,
+				SendInterval: time.Second,
+			},
+			wantErr: true,
+		},
+		{
+			name: "valid with webhook url",
+			config: Config{
+				NodeHome:     "/tmp/root",
+				WALDir:       "/tmp/wal",
+				ServiceURL:   "http://localhost:8080/v1/ingest",
+				NodeID:       "node1",
+				PollInterval: time.Second,
+				SendInterval: time.Second,
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid poll interval",
+			config: Config{
+				NodeHome:     "/tmp/root",
+				WALDir:       "/tmp/wal",
+				ServiceURL:    "http://localhost:8080",
+				PollInterval: -1,
+				SendInterval: time.Second,
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing node-home but has chain-id and node-id",
+			config: Config{
+				ChainID:      "test-chain",
+				NodeID:       "test-node",
+				WALDir:       "/tmp/wal",
+				ServiceURL:    "http://localhost:8080",
+				PollInterval: time.Second,
+				SendInterval: time.Second,
+			},
+			wantErr: false,
+		},
+		{
+			name: "missing node-home and chain-id",
+			config: Config{
+				NodeID:       "test-node",
+				WALDir:       "/tmp/wal",
+				ServiceURL:    "http://localhost:8080",
+				PollInterval: time.Second,
+				SendInterval: time.Second,
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing node-home and node-id",
+			config: Config{
+				ChainID:      "test-chain",
+				WALDir:       "/tmp/wal",
+				ServiceURL:    "http://localhost:8080",
+				PollInterval: time.Second,
+				SendInterval: time.Second,
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.config.Validate(); (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestConfig_Validate_Derivations(t *testing.T) {
+	// Test WALDir derivation
+	c1 := Config{
+		NodeHome:     "/app",
+		NodeID:       "node1",
+		ServiceURL:    "http://example.com",
+		PollInterval: time.Second,
+		SendInterval: time.Second,
+	}
+	if err := c1.Validate(); err != nil {
+		t.Fatalf("Validate failed: %v", err)
+	}
+	expectedWAL := "/app/data/log.wal/node-node1"
+	if c1.WALDir != expectedWAL {
+		t.Errorf("WALDir = %v, want %v", c1.WALDir, expectedWAL)
+	}
+
+	// Test RemoteURL derivation
+	c2 := Config{
+		NodeHome:     "/tmp/root",
+		WALDir:       "/wal",
+		ServiceURL:   "http://api.com/v1/ingest/",
+		NodeID:       "validator-1",
+		PollInterval: time.Second,
+		SendInterval: time.Second,
+	}
+	if err := c2.Validate(); err != nil {
+		t.Fatalf("Validate failed: %v", err)
+	}
+	expectedURL := "http://api.com/v1/ingest"
+	if c2.ServiceURL != expectedURL {
+		t.Errorf("ServiceURL = %v, want %v", c2.ServiceURL, expectedURL)
+	}
+}

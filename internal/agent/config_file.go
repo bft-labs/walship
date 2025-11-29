@@ -1,24 +1,19 @@
 package agent
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	toml "github.com/pelletier/go-toml/v2"
 )
 
 // fileConfig mirrors Config but uses strings for durations to make TOML friendly.
 type fileConfig struct {
-	Root           string  `toml:"root"`
-	NodeID         string  `toml:"node"`
+	NodeHome       string  `toml:"node_home"`
+	NodeID         string  `toml:"node_id"`
 	WALDir         string  `toml:"wal_dir"`
-	RemoteURL      string  `toml:"remote_url"`
-	RemoteBase     string  `toml:"remote_base"`
-	Network        string  `toml:"network"`
-	RemoteNode     string  `toml:"remote_node"`
-	AuthKey        string  `toml:"auth_key"`
+	ServiceURL     string  `toml:"service_url"`
+	AuthKey         string  `toml:"api_key"`
 	PollInterval   string  `toml:"poll_interval"`
 	SendInterval   string  `toml:"send_interval"`
 	HardInterval   string  `toml:"hard_interval"`
@@ -34,6 +29,7 @@ type fileConfig struct {
 	Once           *bool   `toml:"once"`
 }
 
+// loadFileConfig reads and parses a TOML config file.
 func loadFileConfig(path string) (fileConfig, error) {
 	var fc fileConfig
 	b, err := os.ReadFile(path)
@@ -46,6 +42,8 @@ func loadFileConfig(path string) (fileConfig, error) {
 	return fc, nil
 }
 
+// defaultConfigPath returns the default configuration file path.
+// Returns ~/.walship/config.toml if user home directory is accessible.
 func defaultConfigPath() string {
 	if h, err := os.UserHomeDir(); err == nil {
 		return filepath.Join(h, ".walship", "config.toml")
@@ -53,94 +51,70 @@ func defaultConfigPath() string {
 	return ""
 }
 
+// applyFileConfig applies configuration from a file to the Config struct.
+// It respects flags that have been explicitly set (changed map).
 func applyFileConfig(cfg *Config, fc fileConfig, changed map[string]bool) error {
-	// helper to set string if not changed and non-empty
-	setS := func(flag string, v string, dst *string) {
-		if v == "" {
-			return
-		}
-		if !changed[flag] {
-			*dst = v
-		}
+	s := newConfigSetter(changed)
+
+	s.setString("node-home", fc.NodeHome, &cfg.NodeHome)
+	s.setString("node-id", fc.NodeID, &cfg.NodeID)
+	s.setString("wal-dir", fc.WALDir, &cfg.WALDir)
+	s.setString("service-url", fc.ServiceURL, &cfg.ServiceURL)
+	s.setString("auth-key", fc.AuthKey, &cfg.AuthKey)
+	s.setString("iface", fc.Iface, &cfg.Iface)
+	s.setString("state-dir", fc.StateDir, &cfg.StateDir)
+
+	if err := s.setDuration("poll", fc.PollInterval, &cfg.PollInterval); err != nil {
+		return err
 	}
-	// helper to set int if not changed and >0
-	setI := func(flag string, v int, dst *int) {
-		if v <= 0 {
-			return
-		}
-		if !changed[flag] {
-			*dst = v
-		}
+	if err := s.setDuration("send-interval", fc.SendInterval, &cfg.SendInterval); err != nil {
+		return err
 	}
-	// helper to set float if not changed and >0
-	setF := func(flag string, v float64, dst *float64) {
-		if v <= 0 {
-			return
-		}
-		if !changed[flag] {
-			*dst = v
-		}
+	if err := s.setDuration("hard-interval", fc.HardInterval, &cfg.HardInterval); err != nil {
+		return err
 	}
-	// helper to parse duration string
-	setD := func(flag string, v string, dst *time.Duration) error {
-		if v == "" {
-			return nil
-		}
-		if changed[flag] {
-			return nil
-		}
-		d, err := time.ParseDuration(v)
-		if err != nil {
-			return fmt.Errorf("parse %s: %w", flag, err)
-		}
-		*dst = d
-		return nil
+	if err := s.setDuration("timeout", fc.HTTPTimeout, &cfg.HTTPTimeout); err != nil {
+		return err
 	}
 
-	setS("root", fc.Root, &cfg.Root)
-	setS("node", fc.NodeID, &cfg.NodeID)
-	setS("wal-dir", fc.WALDir, &cfg.WALDir)
-	setS("remote-url", fc.RemoteURL, &cfg.RemoteURL)
-	setS("remote-base", fc.RemoteBase, &cfg.RemoteBase)
-	setS("network", fc.Network, &cfg.Network)
-	setS("remote-node", fc.RemoteNode, &cfg.RemoteNode)
-	setS("auth-key", fc.AuthKey, &cfg.AuthKey)
-	if err := setD("poll", fc.PollInterval, &cfg.PollInterval); err != nil {
-		return err
-	}
-	if err := setD("send-interval", fc.SendInterval, &cfg.SendInterval); err != nil {
-		return err
-	}
-	if err := setD("hard-interval", fc.HardInterval, &cfg.HardInterval); err != nil {
-		return err
-	}
-	if err := setD("timeout", fc.HTTPTimeout, &cfg.HTTPTimeout); err != nil {
-		return err
-	}
-	setF("cpu-threshold", fc.CPUThreshold, &cfg.CPUThreshold)
-	setF("net-threshold", fc.NetThreshold, &cfg.NetThreshold)
-	setS("iface", fc.Iface, &cfg.Iface)
-	setI("iface-speed", fc.IfaceSpeedMbps, &cfg.IfaceSpeedMbps)
-	setI("max-batch-bytes", fc.MaxBatchBytes, &cfg.MaxBatchBytes)
-	setS("state-dir", fc.StateDir, &cfg.StateDir)
-	if fc.Verify != nil && !changed["verify"] {
-		cfg.Verify = *fc.Verify
-	}
-	if fc.Meta != nil && !changed["meta"] {
-		cfg.Meta = *fc.Meta
-	}
-	if fc.Once != nil && !changed["once"] {
-		cfg.Once = *fc.Once
-	}
+	s.setFloat("cpu-threshold", fc.CPUThreshold, &cfg.CPUThreshold)
+	s.setFloat("net-threshold", fc.NetThreshold, &cfg.NetThreshold)
+
+	s.setInt("iface-speed", fc.IfaceSpeedMbps, &cfg.IfaceSpeedMbps)
+	s.setInt("max-batch-bytes", fc.MaxBatchBytes, &cfg.MaxBatchBytes)
+
+	s.setBool("verify", fc.Verify, &cfg.Verify)
+	s.setBool("meta", fc.Meta, &cfg.Meta)
+	s.setBool("once", fc.Once, &cfg.Once)
+
 	return nil
 }
 
-func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
+// fileExists checks if a file exists at the given path.
+func fileExists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
+}
 
-// Exported shims for use from main without making helpers public globally.
-func LoadFileConfig(path string) (fileConfig, error) { return loadFileConfig(path) }
-func DefaultConfigPath() string                      { return defaultConfigPath() }
+// Exported functions for use from main package without exposing internal helpers.
+
+// LoadFileConfig reads and parses a TOML config file from the given path.
+func LoadFileConfig(path string) (fileConfig, error) {
+	return loadFileConfig(path)
+}
+
+// DefaultConfigPath returns the default configuration file path.
+func DefaultConfigPath() string {
+	return defaultConfigPath()
+}
+
+// ApplyFileConfig applies configuration from a file to the Config struct.
+// It respects flags that have been explicitly set (changed map).
 func ApplyFileConfig(cfg *Config, fc fileConfig, changed map[string]bool) error {
 	return applyFileConfig(cfg, fc, changed)
 }
-func FileExists(p string) bool { return fileExists(p) }
+
+// FileExists checks if a file exists at the given path.
+func FileExists(p string) bool {
+	return fileExists(p)
+}

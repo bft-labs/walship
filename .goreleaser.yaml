@@ -1,0 +1,72 @@
+version: 2
+
+project_name: walship
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    main: ./cmd/walship
+    binary: walship
+    ldflags:
+      - -s -w
+
+archives:
+  - id: default
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    files:
+      - LICENSE*
+      - README*
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  version_template: "{{ .Tag }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+
+# Docker images
+dockers:
+  - image_templates:
+      - "ghcr.io/bft-labs/cosmos-analyzer-shipper:{{ .Tag }}-amd64"
+      - "ghcr.io/bft-labs/cosmos-analyzer-shipper:latest-amd64"
+    dockerfile: Dockerfile.goreleaser
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+
+  - image_templates:
+      - "ghcr.io/bft-labs/cosmos-analyzer-shipper:{{ .Tag }}-arm64"
+      - "ghcr.io/bft-labs/cosmos-analyzer-shipper:latest-arm64"
+    dockerfile: Dockerfile.goreleaser
+    use: buildx
+    goarch: arm64
+    build_flag_templates:
+      - "--platform=linux/arm64"
+
+docker_manifests:
+  - name_template: "ghcr.io/bft-labs/cosmos-analyzer-shipper:{{ .Tag }}"
+    image_templates:
+      - "ghcr.io/bft-labs/cosmos-analyzer-shipper:{{ .Tag }}-amd64"
+      - "ghcr.io/bft-labs/cosmos-analyzer-shipper:{{ .Tag }}-arm64"
+  - name_template: "ghcr.io/bft-labs/cosmos-analyzer-shipper:latest"
+    image_templates:
+      - "ghcr.io/bft-labs/cosmos-analyzer-shipper:latest-amd64"
+      - "ghcr.io/bft-labs/cosmos-analyzer-shipper:latest-arm64"
