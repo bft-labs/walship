@@ -112,11 +112,8 @@ func TestApplyEnvConfig(t *testing.T) {
 				"WALSHIP_NODE_HOME":        "/root",
 				"WALSHIP_NODE":             "node",
 				"WALSHIP_WAL_DIR":          "/wal",
-				"WALSHIP_REMOTE_URL":       "http://example.com",
-				"WALSHIP_REMOTE_BASE":      "/base",
-				"WALSHIP_NETWORK":          "tcp",
-				"WALSHIP_REMOTE_NODE":      "remote",
-				"WALSHIP_AUTH_KEY":         "secret",
+				"WALSHIP_SERVICE_URL":      "http://example.com",
+				"WALSHIP_AUTH_KEY":          "secret",
 				"WALSHIP_POLL_INTERVAL":    "1m",
 				"WALSHIP_SEND_INTERVAL":    "2m",
 				"WALSHIP_HARD_INTERVAL":    "3m",
@@ -137,8 +134,7 @@ func TestApplyEnvConfig(t *testing.T) {
 				NodeHome:       "/root",
 				NodeID:         "node",
 				WALDir:         "/wal",
-				RemoteURL:      "http://example.com",
-				RemoteBase:     "/base",
+				ServiceURL:      "http://example.com",
 				AuthKey:        "secret",
 				PollInterval:   1 * time.Minute,
 				SendInterval:   2 * time.Minute,
@@ -194,8 +190,8 @@ func TestApplyEnvConfig(t *testing.T) {
 				if cfg.WALDir != tt.expected.WALDir {
 					t.Errorf("WALDir = %v, want %v", cfg.WALDir, tt.expected.WALDir)
 				}
-				if cfg.RemoteURL != tt.expected.RemoteURL {
-					t.Errorf("RemoteURL = %v, want %v", cfg.RemoteURL, tt.expected.RemoteURL)
+				if cfg.ServiceURL != tt.expected.ServiceURL {
+					t.Errorf("ServiceURL = %v, want %v", cfg.ServiceURL, tt.expected.ServiceURL)
 				}
 
 				// Check duration fields

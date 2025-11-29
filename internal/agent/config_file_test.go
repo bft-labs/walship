@@ -64,8 +64,7 @@ func TestApplyFileConfig(t *testing.T) {
 				NodeHome:       "/tmp/root",
 				NodeID:         "node1",
 				WALDir:         "/tmp/custom_wal",
-				RemoteURL:      "http://example.com",
-				RemoteBase:     "/base",
+				ServiceURL:      "http://example.com",
 				AuthKey:        "secret",
 				PollInterval:   "1m",
 				SendInterval:   "2m",
@@ -87,8 +86,7 @@ func TestApplyFileConfig(t *testing.T) {
 				NodeHome:       "/tmp/root",
 				NodeID:         "node1",
 				WALDir:         "/tmp/custom_wal",
-				RemoteURL:      "http://example.com",
-				RemoteBase:     "/base",
+				ServiceURL:      "http://example.com",
 				AuthKey:        "secret",
 				PollInterval:   1 * time.Minute,
 				SendInterval:   2 * time.Minute,
@@ -133,8 +131,8 @@ func TestApplyFileConfig(t *testing.T) {
 				if cfg.WALDir != tt.expected.WALDir {
 					t.Errorf("WALDir = %v, want %v", cfg.WALDir, tt.expected.WALDir)
 				}
-				if cfg.RemoteURL != tt.expected.RemoteURL {
-					t.Errorf("RemoteURL = %v, want %v", cfg.RemoteURL, tt.expected.RemoteURL)
+				if cfg.ServiceURL != tt.expected.ServiceURL {
+					t.Errorf("ServiceURL = %v, want %v", cfg.ServiceURL, tt.expected.ServiceURL)
 				}
 
 				// Check duration fields

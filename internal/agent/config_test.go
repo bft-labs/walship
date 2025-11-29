@@ -37,7 +37,7 @@ func TestConfig_Validate(t *testing.T) {
 			config: Config{
 				NodeHome:     "/tmp/root",
 				WALDir:       "/tmp/wal",
-				RemoteURL:    "http://localhost:8080",
+				ServiceURL:    "http://localhost:8080",
 				PollInterval: time.Second,
 				SendInterval: time.Second,
 			},
@@ -46,7 +46,7 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "missing wal dir and node-home",
 			config: Config{
-				RemoteURL:    "http://localhost:8080",
+				ServiceURL:    "http://localhost:8080",
 				PollInterval: time.Second,
 				SendInterval: time.Second,
 			},
@@ -57,7 +57,7 @@ func TestConfig_Validate(t *testing.T) {
 			config: Config{
 				NodeHome:     "/tmp/root",
 				NodeID:       "default",
-				RemoteURL:    "http://localhost:8080",
+				ServiceURL:    "http://localhost:8080",
 				PollInterval: time.Second,
 				SendInterval: time.Second,
 			},
@@ -73,11 +73,11 @@ func TestConfig_Validate(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "derived remote url",
+			name: "valid with webhook url",
 			config: Config{
 				NodeHome:     "/tmp/root",
 				WALDir:       "/tmp/wal",
-				RemoteBase:   "http://localhost:8080",
+				ServiceURL:   "http://localhost:8080/v1/ingest",
 				NodeID:       "node1",
 				PollInterval: time.Second,
 				SendInterval: time.Second,
@@ -89,7 +89,7 @@ func TestConfig_Validate(t *testing.T) {
 			config: Config{
 				NodeHome:     "/tmp/root",
 				WALDir:       "/tmp/wal",
-				RemoteURL:    "http://localhost:8080",
+				ServiceURL:    "http://localhost:8080",
 				PollInterval: -1,
 				SendInterval: time.Second,
 			},
@@ -101,7 +101,7 @@ func TestConfig_Validate(t *testing.T) {
 				ChainID:      "test-chain",
 				NodeID:       "test-node",
 				WALDir:       "/tmp/wal",
-				RemoteURL:    "http://localhost:8080",
+				ServiceURL:    "http://localhost:8080",
 				PollInterval: time.Second,
 				SendInterval: time.Second,
 			},
@@ -112,7 +112,7 @@ func TestConfig_Validate(t *testing.T) {
 			config: Config{
 				NodeID:       "test-node",
 				WALDir:       "/tmp/wal",
-				RemoteURL:    "http://localhost:8080",
+				ServiceURL:    "http://localhost:8080",
 				PollInterval: time.Second,
 				SendInterval: time.Second,
 			},
@@ -123,7 +123,7 @@ func TestConfig_Validate(t *testing.T) {
 			config: Config{
 				ChainID:      "test-chain",
 				WALDir:       "/tmp/wal",
-				RemoteURL:    "http://localhost:8080",
+				ServiceURL:    "http://localhost:8080",
 				PollInterval: time.Second,
 				SendInterval: time.Second,
 			},
@@ -145,7 +145,7 @@ func TestConfig_Validate_Derivations(t *testing.T) {
 	c1 := Config{
 		NodeHome:     "/app",
 		NodeID:       "node1",
-		RemoteURL:    "http://example.com",
+		ServiceURL:    "http://example.com",
 		PollInterval: time.Second,
 		SendInterval: time.Second,
 	}
@@ -161,7 +161,7 @@ func TestConfig_Validate_Derivations(t *testing.T) {
 	c2 := Config{
 		NodeHome:     "/tmp/root",
 		WALDir:       "/wal",
-		RemoteBase:   "http://api.com/", // trailing slash should be handled
+		ServiceURL:   "http://api.com/v1/ingest/",
 		NodeID:       "validator-1",
 		PollInterval: time.Second,
 		SendInterval: time.Second,
@@ -169,8 +169,8 @@ func TestConfig_Validate_Derivations(t *testing.T) {
 	if err := c2.Validate(); err != nil {
 		t.Fatalf("Validate failed: %v", err)
 	}
-	expectedURL := "http://api.com/v1/ingest/wal-frames"
-	if c2.RemoteURL != expectedURL {
-		t.Errorf("RemoteURL = %v, want %v", c2.RemoteURL, expectedURL)
+	expectedURL := "http://api.com/v1/ingest"
+	if c2.ServiceURL != expectedURL {
+		t.Errorf("ServiceURL = %v, want %v", c2.ServiceURL, expectedURL)
 	}
 }

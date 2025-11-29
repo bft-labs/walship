@@ -21,7 +21,7 @@ walship auto-discovers:
 ```bash
 ./walship \
   --node-home /path/to/.evmosd \
-  --remote-url https://api.example.com/v1/ingest \
+  --service-url https://api.example.com/v1/ingest \
   --auth-key=$MY_AUTH_KEY
 ```
 
@@ -52,7 +52,7 @@ docker run -d \
   --name walship \
   -v /path/to/.evmosd:/node \
   -e WALSHIP_NODE_HOME=/node \
-  -e WALSHIP_REMOTE_URL=https://api.example.com/v1/ingest \
+  -e WALSHIP_SERVICE_URL=https://api.example.com/v1/ingest \
   -e WALSHIP_AUTH_KEY=$MY_AUTH_KEY \
   --restart unless-stopped \
   ghcr.io/bft-labs/cosmos-analyzer-shipper:latest
@@ -71,8 +71,8 @@ make build
 
 Configuration is loaded in the following order (highest to lowest priority):
 
-1. **CLI Flags** (e.g., `--remote-url`)
-2. **Environment Variables** (e.g., `WALSHIP_REMOTE_URL`)
+1. **CLI Flags** (e.g., `--service-url`)
+2. **Environment Variables** (e.g., `WALSHIP_SERVICE_URL`)
 3. **Config File** (default: `$HOME/.walship/config.toml`)
 
 ### Required
@@ -82,7 +82,7 @@ You must provide **either**:
 - **OR** `--wal-dir` + `--chain-id` + `--node-id` explicitly
 
 And:
-- `--remote-url` or `--remote-base`
+- `--service-url`
 
 ### Environment Variables
 
@@ -94,8 +94,7 @@ All CLI flags have a `WALSHIP_` prefixed environment variable equivalent:
 | `--chain-id` | `WALSHIP_CHAIN_ID` | (auto-discovered) | Override chain ID from genesis.json |
 | `--node` | `WALSHIP_NODE` | `"default"` | Override node ID |
 | `--wal-dir` | `WALSHIP_WAL_DIR` | (auto-discovered) | WAL directory path |
-| `--remote-url` | `WALSHIP_REMOTE_URL` | (required) | Full remote endpoint URL |
-| `--remote-base` | `WALSHIP_REMOTE_BASE` | `""` | Remote base URL (auto-appends `/v1/ingest/wal-frames`) |
+| `--service-url` | `WALSHIP_SERVICE_URL` | (required) | Service URL (e.g., `https://api.apphash.io/v1/ingest`) |
 | `--auth-key` | `WALSHIP_AUTH_KEY` | `""` | Authorization key |
 | `--poll` | `WALSHIP_POLL_INTERVAL` | `"500ms"` | Poll interval when idle |
 | `--send-interval` | `WALSHIP_SEND_INTERVAL` | `"5s"` | Soft send interval |
@@ -114,7 +113,7 @@ Create `$HOME/.walship/config.toml`:
 
 ```toml
 node_home = "/path/to/node"
-remote_url = "https://api.example.com/v1/ingest/wal-frames"
+service_url = "https://api.example.com/v1/ingest"
 auth_key = "your-secret-key"
 
 poll_interval = "500ms"
@@ -134,11 +133,13 @@ Automatically discovers chain-id and node-id from node files:
 ```bash
 ./walship \
   --node-home /home/validator/.osmosisd \
-  --remote-base https://api.example.com \
+  --service-url https://api.example.com/v1/ingest \
   --auth-key your-secret-key
 ```
-URL becomes:
-`https://api.example.com/v1/ingest/wal-frames`
+
+Internally sends to:
+- WAL frames: `POST https://api.example.com/v1/ingest/wal-frames`
+- Config (future): `POST https://api.example.com/v1/ingest/config`
 
 Node metadata (chain-id, node-id) is sent via headers:
 - `X-Cosmos-Analyzer-Chain-Id`
@@ -152,7 +153,7 @@ docker run -d \
   --name walship \
   -v /path/to/.evmd:/node \
   -e WALSHIP_NODE_HOME=/node \
-  -e WALSHIP_REMOTE_URL=https://api.example.com/v1/ingest \
+  -e WALSHIP_SERVICE_URL=https://api.example.com/v1/ingest \
   -e WALSHIP_AUTH_KEY=$MY_AUTH_KEY \
   --restart unless-stopped \
   ghcr.io/bft-labs/cosmos-analyzer-shipper:latest
@@ -180,7 +181,7 @@ docker build -t walship .
 make build
 
 # Run with debug output
-./walship --node-home /path/to/node --remote-url http://localhost:8080 --meta
+./walship --node-home /path/to/node --service-url http://localhost:8080/v1/ingest --meta
 ```
 
 ## Troubleshooting

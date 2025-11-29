@@ -28,9 +28,8 @@ type Config struct {
 
 	ChainID string
 
-	RemoteURL  string
-	RemoteBase string
-	AuthKey    string
+	ServiceURL string
+	AuthKey     string
 
 	PollInterval time.Duration
 	SendInterval time.Duration
@@ -61,7 +60,7 @@ func DefaultConfig() Config {
 		IfaceSpeedMbps: 1000,
 		MaxBatchBytes:  4 << 20, // 4MB
 		StateDir:       defaultStateDir(),
-		AuthKey:        os.Getenv("MEMAGENT_AUTH_KEY"),
+		AuthKey:         os.Getenv("WALSHIP_AUTH_KEY"),
 	}
 }
 
@@ -92,17 +91,13 @@ func (c *Config) Validate() error {
 		}
 	}
 
-	if c.RemoteURL == "" {
-		if c.RemoteBase != "" {
-			base := c.RemoteBase
-			// ensure no trailing slash
-			if len(base) > 0 && base[len(base)-1] == '/' {
-				base = base[:len(base)-1]
-			}
-			c.RemoteURL = base + "/v1/ingest/wal-frames"
-		} else {
-			return fmt.Errorf("remote-url is required (or remote-base)")
-		}
+	if c.ServiceURL == "" {
+		return fmt.Errorf("service-url is required")
+	}
+
+	// Ensure no trailing slash
+	if len(c.ServiceURL) > 0 && c.ServiceURL[len(c.ServiceURL)-1] == '/' {
+		c.ServiceURL = c.ServiceURL[:len(c.ServiceURL)-1]
 	}
 
 	if c.PollInterval <= 0 {

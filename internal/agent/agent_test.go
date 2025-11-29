@@ -41,7 +41,7 @@ func TestTrySend(t *testing.T) {
 	defer ts.Close()
 
 	cfg := Config{
-		RemoteURL: ts.URL,
+		ServiceURL: ts.URL,
 		ChainID:   "test-chain",
 		NodeID:    "test-node",
 		AuthKey:   "secret",
@@ -121,7 +121,7 @@ func TestRun_Startup(t *testing.T) {
 	cfg := Config{
 		NodeHome:     tmpDir,
 		WALDir:       walDir,
-		RemoteURL:    "http://localhost:8080",
+		ServiceURL:    "http://localhost:8080",
 		PollInterval: time.Millisecond,
 		StateDir:     filepath.Join(tmpDir, ".walship"),
 	}
@@ -153,7 +153,7 @@ func TestTrySend_ServerError(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	cfg := Config{RemoteURL: ts.URL}
+	cfg := Config{ServiceURL: ts.URL}
 	batch := []batchFrame{{Meta: FrameMeta{File: "f", Frame: 1}}}
 	batchBytes := 10
 	st := state{IdxOffset: 0}
@@ -179,7 +179,7 @@ func TestTrySend_Timeout(t *testing.T) {
 	defer ts.Close()
 
 	cfg := Config{
-		RemoteURL:   ts.URL,
+		ServiceURL:   ts.URL,
 		HTTPTimeout: 10 * time.Millisecond,
 	}
 	httpClient := &http.Client{Timeout: cfg.HTTPTimeout}
@@ -203,7 +203,7 @@ func TestTrySend_Timeout(t *testing.T) {
 func TestRun_MissingWALDir(t *testing.T) {
 	// Test that Run returns error when WALDir is empty/invalid
 	cfg := Config{
-		RemoteURL: "http://test",
+		ServiceURL: "http://test",
 		StateDir:  "/tmp",
 		// WALDir is empty - should fail in oldestIndex
 	}
@@ -223,7 +223,7 @@ func TestTrySend_StateVerification(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	cfg := Config{
-		RemoteURL: ts.URL,
+		ServiceURL: ts.URL,
 		StateDir:  tmpDir,
 	}
 
@@ -286,7 +286,7 @@ func TestRun_OnceMode(t *testing.T) {
 	}
 
 	cfg := Config{
-		RemoteURL:    "http://localhost:9999",
+		ServiceURL:    "http://localhost:9999",
 		StateDir:     filepath.Join(tmpDir, ".state"),
 		WALDir:       walDir,
 		Once:         true,
@@ -312,7 +312,7 @@ func TestTrySend_LargeFrame(t *testing.T) {
 	defer ts.Close()
 
 	cfg := Config{
-		RemoteURL:     ts.URL,
+		ServiceURL:     ts.URL,
 		MaxBatchBytes: 100, // Small limit
 	}
 
@@ -352,7 +352,7 @@ func TestTrySend_BatchOverflow(t *testing.T) {
 	defer ts.Close()
 
 	cfg := Config{
-		RemoteURL:     ts.URL,
+		ServiceURL:     ts.URL,
 		MaxBatchBytes: 100,
 	}
 

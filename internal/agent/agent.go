@@ -21,8 +21,8 @@ type batchFrame struct {
 }
 
 func Run(ctx context.Context, cfg Config) error {
-	if cfg.RemoteURL == "" {
-		return fmt.Errorf("remote-url is required")
+	if cfg.ServiceURL == "" {
+		return fmt.Errorf("service-url is required")
 	}
 	if err := os.MkdirAll(cfg.StateDir, 0o700); err != nil {
 		return fmt.Errorf("state dir: %w", err)
@@ -182,7 +182,8 @@ func trySend(cfg Config, httpClient *http.Client, batch *[]batchFrame, batchByte
 		manifest = append(manifest, fr.Meta)
 		advance += int64(fr.IdxLineLen)
 	}
-	req, err := http.NewRequest(http.MethodPost, cfg.RemoteURL, &buf)
+	url := cfg.ServiceURL + "/wal-frames"
+	req, err := http.NewRequest(http.MethodPost, url, &buf)
 	if err != nil {
 		return
 	}
