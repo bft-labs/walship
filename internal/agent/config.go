@@ -24,9 +24,9 @@ type FrameMeta struct {
 }
 
 type Config struct {
-	Root   string
-	NodeID string
-	WALDir string
+	NodeHome string
+	NodeID   string
+	WALDir   string
 
 	ChainID string
 
@@ -78,21 +78,21 @@ func defaultStateDir() string {
 
 // Validate checks the configuration for errors and sets derived defaults.
 func (c *Config) Validate() error {
-	if c.Root == "" {
+	if c.NodeHome == "" {
 		if c.ChainID == "" {
-			return fmt.Errorf("root directory is required when chain-id is missing")
+			return fmt.Errorf("node-home is required when chain-id is missing")
 		}
 		if c.NodeID == "" || c.NodeID == "default" {
-			return fmt.Errorf("root directory is required when node-id is missing or default")
+			return fmt.Errorf("node-home is required when node-id is missing or default")
 		}
 	}
 
 	if c.WALDir == "" {
 		if c.NodeID != "" {
 			// fallback derived layout
-			c.WALDir = fmt.Sprintf("%s/data/log.wal/node-%s", c.Root, c.NodeID)
+			c.WALDir = fmt.Sprintf("%s/data/log.wal/node-%s", c.NodeHome, c.NodeID)
 		} else {
-			return fmt.Errorf("wal-dir is required (or root)")
+			return fmt.Errorf("wal-dir is required (or node-home)")
 		}
 	}
 

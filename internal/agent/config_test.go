@@ -35,7 +35,7 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "valid minimal config",
 			config: Config{
-				Root:         "/tmp/root",
+				NodeHome:     "/tmp/root",
 				WALDir:       "/tmp/wal",
 				RemoteURL:    "http://localhost:8080",
 				PollInterval: time.Second,
@@ -44,7 +44,7 @@ func TestConfig_Validate(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "missing wal dir and root",
+			name: "missing wal dir and node-home",
 			config: Config{
 				RemoteURL:    "http://localhost:8080",
 				PollInterval: time.Second,
@@ -53,9 +53,9 @@ func TestConfig_Validate(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "derived wal dir from root",
+			name: "derived wal dir from node-home",
 			config: Config{
-				Root:         "/tmp/root",
+				NodeHome:     "/tmp/root",
 				NodeID:       "default",
 				RemoteURL:    "http://localhost:8080",
 				PollInterval: time.Second,
@@ -75,7 +75,7 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "derived remote url",
 			config: Config{
-				Root:         "/tmp/root",
+				NodeHome:     "/tmp/root",
 				WALDir:       "/tmp/wal",
 				RemoteBase:   "http://localhost:8080",
 				Network:      "testnet",
@@ -88,7 +88,7 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "invalid poll interval",
 			config: Config{
-				Root:         "/tmp/root",
+				NodeHome:     "/tmp/root",
 				WALDir:       "/tmp/wal",
 				RemoteURL:    "http://localhost:8080",
 				PollInterval: -1,
@@ -97,7 +97,7 @@ func TestConfig_Validate(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "missing root but has chain-id and node-id",
+			name: "missing node-home but has chain-id and node-id",
 			config: Config{
 				ChainID:      "test-chain",
 				NodeID:       "test-node",
@@ -109,7 +109,7 @@ func TestConfig_Validate(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "missing root and chain-id",
+			name: "missing node-home and chain-id",
 			config: Config{
 				NodeID:       "test-node",
 				WALDir:       "/tmp/wal",
@@ -120,7 +120,7 @@ func TestConfig_Validate(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "missing root and node-id",
+			name: "missing node-home and node-id",
 			config: Config{
 				ChainID:      "test-chain",
 				WALDir:       "/tmp/wal",
@@ -144,7 +144,7 @@ func TestConfig_Validate(t *testing.T) {
 func TestConfig_Validate_Derivations(t *testing.T) {
 	// Test WALDir derivation
 	c1 := Config{
-		Root:         "/app",
+		NodeHome:     "/app",
 		NodeID:       "node1",
 		RemoteURL:    "http://example.com",
 		PollInterval: time.Second,
@@ -160,7 +160,7 @@ func TestConfig_Validate_Derivations(t *testing.T) {
 
 	// Test RemoteURL derivation
 	c2 := Config{
-		Root:         "/tmp/root",
+		NodeHome:     "/tmp/root",
 		WALDir:       "/wal",
 		RemoteBase:   "http://api.com/", // trailing slash should be handled
 		Network:      "cosmos",

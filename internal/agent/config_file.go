@@ -9,7 +9,7 @@ import (
 
 // fileConfig mirrors Config but uses strings for durations to make TOML friendly.
 type fileConfig struct {
-	Root           string  `toml:"root"`
+	NodeHome       string  `toml:"node_home"`
 	NodeID         string  `toml:"node"`
 	WALDir         string  `toml:"wal_dir"`
 	RemoteURL      string  `toml:"remote_url"`
@@ -59,7 +59,7 @@ func defaultConfigPath() string {
 func applyFileConfig(cfg *Config, fc fileConfig, changed map[string]bool) error {
 	s := newConfigSetter(changed)
 
-	s.setString("root", fc.Root, &cfg.Root)
+	s.setString("node-home", fc.NodeHome, &cfg.NodeHome)
 	s.setString("node", fc.NodeID, &cfg.NodeID)
 	s.setString("wal-dir", fc.WALDir, &cfg.WALDir)
 	s.setString("remote-url", fc.RemoteURL, &cfg.RemoteURL)

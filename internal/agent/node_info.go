@@ -18,38 +18,38 @@ const (
 )
 
 // LoadNodeInfo loads ChainID and NodeID from files if they are not already set in the config.
-// It respects the Root directory in the config.
+// It respects the NodeHome directory in the config.
 func LoadNodeInfo(cfg *Config) error {
 	// Read ChainID from genesis.json if not set
 	if cfg.ChainID == "" {
-		if cfg.Root != "" {
-			chainID, err := readChainID(cfg.Root)
+		if cfg.NodeHome != "" {
+			chainID, err := readChainID(cfg.NodeHome)
 			if err != nil {
 				return fmt.Errorf("read chain id: %w", err)
 			}
 			cfg.ChainID = chainID
 		} else {
-			return fmt.Errorf("chain-id is required (or root)")
+			return fmt.Errorf("chain-id is required (or node-home)")
 		}
 	}
 
 	// Read NodeID from node_key.json if not set (or default)
 	if cfg.NodeID == "" || cfg.NodeID == "default" {
-		if cfg.Root != "" {
-			nodeID, err := readNodeID(cfg.Root)
+		if cfg.NodeHome != "" {
+			nodeID, err := readNodeID(cfg.NodeHome)
 			if err != nil {
 				return fmt.Errorf("read node id: %w", err)
 			}
 			cfg.NodeID = nodeID
 		} else {
-			return fmt.Errorf("node-id is required (or root)")
+			return fmt.Errorf("node-id is required (or node-home)")
 		}
 	}
 	return nil
 }
 
-func readChainID(root string) (string, error) {
-	path := rootify(filepath.Join(DefaultConfigDir, DefaultGenesisJSONName), root)
+func readChainID(nodeHome string) (string, error) {
+	path := rootify(filepath.Join(DefaultConfigDir, DefaultGenesisJSONName), nodeHome)
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
@@ -61,8 +61,8 @@ func readChainID(root string) (string, error) {
 	return doc.ChainID, nil
 }
 
-func readNodeID(root string) (string, error) {
-	path := rootify(filepath.Join(DefaultConfigDir, DefaultNodeKeyName), root)
+func readNodeID(nodeHome string) (string, error) {
+	path := rootify(filepath.Join(DefaultConfigDir, DefaultNodeKeyName), nodeHome)
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
@@ -96,12 +96,12 @@ func readNodeID(root string) (string, error) {
 }
 
 // rootify returns the absolute path if path is absolute,
-// otherwise it joins root and path.
-func rootify(path, root string) string {
+// otherwise it joins nodeHome and path.
+func rootify(path, nodeHome string) string {
 	if filepath.IsAbs(path) {
 		return path
 	}
-	return filepath.Join(root, path)
+	return filepath.Join(nodeHome, path)
 }
 
 type genesisDoc struct {

@@ -20,7 +20,7 @@ walship auto-discovers:
 
 ```bash
 ./walship \
-  --root /path/to/.evmosd \
+  --node-home /path/to/.evmosd \
   --remote-url https://api.example.com/v1/ingest \
   --auth-key=$MY_AUTH_KEY
 ```
@@ -51,7 +51,7 @@ tar xzf walship_Linux_x86_64.tar.gz
 docker run -d \
   --name walship \
   -v /path/to/.evmosd:/node \
-  -e WALSHIP_ROOT=/node \
+  -e WALSHIP_NODE_HOME=/node \
   -e WALSHIP_REMOTE_URL=https://api.example.com/v1/ingest \
   -e WALSHIP_AUTH_KEY=$MY_AUTH_KEY \
   --restart unless-stopped \
@@ -78,7 +78,7 @@ Configuration is loaded in the following order (highest to lowest priority):
 ### Required
 
 You must provide **either**:
-- `--root` (node root directory) - Auto-discovers chain-id and node-id
+- `--node-home` (node home directory) - Auto-discovers chain-id and node-id
 - **OR** `--wal-dir` + `--chain-id` + `--node-id` explicitly
 
 And:
@@ -90,7 +90,7 @@ All CLI flags have a `WALSHIP_` prefixed environment variable equivalent:
 
 | Flag | Environment Variable | Description |
 |------|---------------------|-------------|
-| `--root` | `WALSHIP_ROOT` | Node root directory (contains `config/`, `data/`) |
+| `--node-home` | `WALSHIP_NODE_HOME` | Node home directory (contains `config/`, `data/`) |
 | `--chain-id` | `WALSHIP_CHAIN_ID` | Override chain ID from genesis.json |
 | `--node-id` | `WALSHIP_NODE` | Override node ID (defaults to "default") |
 | `--wal-dir` | `WALSHIP_WAL_DIR` | WAL directory path |
@@ -108,7 +108,7 @@ All CLI flags have a `WALSHIP_` prefixed environment variable equivalent:
 Create `$HOME/.walship/config.toml`:
 
 ```toml
-root = "/path/to/node"
+node_home = "/path/to/node"
 remote_url = "http://backend:8080/v1/ingest/mychain/validator-01/wal-frames"
 auth_key = "your-secret-key"
 
@@ -128,7 +128,7 @@ Automatically discovers chain-id and node-id from node files:
 
 ```bash
 ./walship \
-  --root /home/validator/.osmosisd \
+  --node-home /home/validator/.osmosisd \
   --remote-base https://api.example.com \
   --network mainnet \
   --auth-key your-secret-key
@@ -143,7 +143,7 @@ URL becomes:
 docker run -d \
   --name walship \
   -v /path/to/.evmd:/node \
-  -e WALSHIP_ROOT=/node \
+  -e WALSHIP_NODE_HOME=/node \
   -e WALSHIP_REMOTE_URL=https://api.example.com/v1/ingest \
   -e WALSHIP_AUTH_KEY=$MY_AUTH_KEY \
   --restart unless-stopped \
@@ -172,7 +172,7 @@ docker build -t walship .
 make build
 
 # Run with debug output
-./walship --root /path/to/node --remote-url http://localhost:8080 --meta
+./walship --node-home /path/to/node --remote-url http://localhost:8080 --meta
 ```
 
 ## Troubleshooting
@@ -186,7 +186,7 @@ ls -la /path/to/data/log.wal/node-*/
 
 ### "chain-id is required"
 
-Either provide `--root` (for auto-discovery) or explicitly set:
+Either provide `--node-home` (for auto-discovery) or explicitly set:
 ```bash
 --chain-id my-chain --node-id abc123 --wal-dir /path/to/wal
 ```

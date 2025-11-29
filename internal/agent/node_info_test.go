@@ -64,7 +64,7 @@ func TestLoadNodeInfo(t *testing.T) {
 		{
 			name: "load from files (missing IDs)",
 			cfg: Config{
-				Root: tmpDir,
+				NodeHome: tmpDir,
 			},
 			wantChainID: "test-chain-1",
 			wantNodeID:  expectedID,
@@ -88,21 +88,21 @@ func TestLoadNodeInfo(t *testing.T) {
 		{
 			name: "invalid node_key.json (bad json)",
 			cfg: Config{
-				Root: filepath.Join(tmpDir, "bad_json"),
+				NodeHome: filepath.Join(tmpDir, "bad_json"),
 			},
 			wantErr: true,
 		},
 		{
 			name: "invalid node_key.json (bad base64)",
 			cfg: Config{
-				Root: filepath.Join(tmpDir, "bad_base64"),
+				NodeHome: filepath.Join(tmpDir, "bad_base64"),
 			},
 			wantErr: true,
 		},
 		{
 			name: "invalid node_key.json (bad key length)",
 			cfg: Config{
-				Root: filepath.Join(tmpDir, "bad_length"),
+				NodeHome: filepath.Join(tmpDir, "bad_length"),
 			},
 			wantErr: true,
 		},

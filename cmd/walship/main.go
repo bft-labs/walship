@@ -70,7 +70,7 @@ func main() {
 
 	// Flags
 	root.Flags().StringVar(&cfgPath, "config", "", "path to config file (default: $HOME/.walship/config.toml)")
-	root.Flags().StringVar(&cfg.Root, "root", cfg.Root, "application root (contains data/) [fallback for WAL dir]")
+	root.Flags().StringVar(&cfg.NodeHome, "node-home", "", "application home directory")
 	root.Flags().StringVar(&cfg.ChainID, "chain-id", cfg.ChainID, "chain id (override genesis.json)")
 	root.Flags().StringVar(&cfg.NodeID, "node", cfg.NodeID, "node id (directory suffix)")
 	root.Flags().StringVar(&cfg.WALDir, "wal-dir", cfg.WALDir, "WAL directory containing .idx/.gz pairs")

@@ -20,11 +20,11 @@ func TestTrySend(t *testing.T) {
 	// Setup mock server
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify headers
-		if r.Header.Get("X-Cosmos-ChainId") != "test-chain" {
-			t.Errorf("X-Cosmos-ChainId = %v, want test-chain", r.Header.Get("X-Cosmos-ChainId"))
+		if r.Header.Get("X-Cosmos-Analyzer-Chain-Id") != "test-chain" {
+			t.Errorf("X-Cosmos-ChainId = %v, want test-chain", r.Header.Get("X-Cosmos-Analyzer-Chain-Id"))
 		}
-		if r.Header.Get("X-Cosmos-NodeId") != "test-node" {
-			t.Errorf("X-Cosmos-NodeId = %v, want test-node", r.Header.Get("X-Cosmos-NodeId"))
+		if r.Header.Get("X-Cosmos-Analyzer-Node-Id") != "test-node" {
+			t.Errorf("X-Cosmos-NodeId = %v, want test-node", r.Header.Get("X-Cosmos-Analyzer-Node-Id"))
 		}
 		if r.Header.Get("Authorization") != "Bearer secret" {
 			t.Errorf("Authorization = %v, want Bearer secret", r.Header.Get("Authorization"))
@@ -119,7 +119,7 @@ func TestRun_Startup(t *testing.T) {
 	}
 
 	cfg := Config{
-		Root:         tmpDir,
+		NodeHome:     tmpDir,
 		WALDir:       walDir,
 		RemoteURL:    "http://localhost:8080",
 		PollInterval: time.Millisecond,

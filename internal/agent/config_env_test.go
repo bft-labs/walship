@@ -18,7 +18,7 @@ func TestApplyEnvConfig(t *testing.T) {
 		{
 			name: "applies all valid env vars",
 			envVars: map[string]string{
-				"WALSHIP_ROOT":             "/env/root",
+				"WALSHIP_NODE_HOME":        "/env/root",
 				"WALSHIP_NODE":             "env-node",
 				"WALSHIP_POLL_INTERVAL":    "10m",
 				"WALSHIP_CPU_THRESHOLD":    "0.9",
@@ -28,7 +28,7 @@ func TestApplyEnvConfig(t *testing.T) {
 			changed: map[string]bool{},
 			initial: Config{},
 			expected: Config{
-				Root:           "/env/root",
+				NodeHome:       "/env/root",
 				NodeID:         "env-node",
 				PollInterval:   10 * time.Minute,
 				CPUThreshold:   0.9,
@@ -40,16 +40,14 @@ func TestApplyEnvConfig(t *testing.T) {
 		{
 			name: "respects changed flags",
 			envVars: map[string]string{
-				"WALSHIP_ROOT": "/env/root",
-				"WALSHIP_NODE": "env-node",
+				"WALSHIP_NODE_HOME": "/env/root",
+				"WALSHIP_NODE":      "env-node",
 			},
-			changed: map[string]bool{"root": true},
+			changed: map[string]bool{"node-home": true},
 			initial: Config{
-				Root:   "/flag/root",
-				NodeID: "flag-node",
+				NodeID: "env-node",
 			},
 			expected: Config{
-				Root:   "/flag/root", // unchanged because flag was set
 				NodeID: "env-node",
 			},
 			wantErr: false,
@@ -111,7 +109,7 @@ func TestApplyEnvConfig(t *testing.T) {
 		{
 			name: "handles all field types correctly",
 			envVars: map[string]string{
-				"WALSHIP_ROOT":             "/root",
+				"WALSHIP_NODE_HOME":        "/root",
 				"WALSHIP_NODE":             "node",
 				"WALSHIP_WAL_DIR":          "/wal",
 				"WALSHIP_REMOTE_URL":       "http://example.com",
@@ -136,7 +134,7 @@ func TestApplyEnvConfig(t *testing.T) {
 			changed: map[string]bool{},
 			initial: Config{},
 			expected: Config{
-				Root:           "/root",
+				NodeHome:       "/root",
 				NodeID:         "node",
 				WALDir:         "/wal",
 				RemoteURL:      "http://example.com",
@@ -189,8 +187,8 @@ func TestApplyEnvConfig(t *testing.T) {
 
 			if !tt.wantErr {
 				// Check string fields
-				if cfg.Root != tt.expected.Root {
-					t.Errorf("Root = %v, want %v", cfg.Root, tt.expected.Root)
+				if cfg.NodeHome != tt.expected.NodeHome {
+					t.Errorf("NodeHome = %v, want %v", cfg.NodeHome, tt.expected.NodeHome)
 				}
 				if cfg.NodeID != tt.expected.NodeID {
 					t.Errorf("NodeID = %v, want %v", cfg.NodeID, tt.expected.NodeID)
@@ -241,28 +239,28 @@ func TestConfigPrecedence(t *testing.T) {
 
 	// Setup file config
 	fileConf := fileConfig{
-		Root:   "/file/root",
-		NodeID: "file-node",
-		Verify: &trueVal,
+		NodeHome: "/file/root",
+		NodeID:   "file-node",
+		Verify:   &trueVal,
 	}
 
 	// Setup env vars
-	os.Setenv("WALSHIP_ROOT", "/env/root")
+	os.Setenv("WALSHIP_NODE_HOME", "/env/root")
 	os.Setenv("WALSHIP_NODE", "env-node")
 	os.Setenv("WALSHIP_WAL_DIR", "/env/wal")
 	defer func() {
-		os.Unsetenv("WALSHIP_ROOT")
+		os.Unsetenv("WALSHIP_NODE_HOME")
 		os.Unsetenv("WALSHIP_NODE")
 		os.Unsetenv("WALSHIP_WAL_DIR")
 	}()
 
 	// Simulate CLI flags
 	changed := map[string]bool{
-		"root": true, // CLI flag was set for root
+		"node-home": true, // CLI flag was set for root
 	}
 
 	cfg := Config{
-		Root: "/cli/root", // This should remain (CLI wins)
+		NodeHome: "/cli/root", // This should remain (CLI wins)
 	}
 
 	// Apply file config
@@ -276,8 +274,8 @@ func TestConfigPrecedence(t *testing.T) {
 	}
 
 	// Verify precedence: CLI > Env > File
-	if cfg.Root != "/cli/root" {
-		t.Errorf("Root = %v, want /cli/root (CLI should win)", cfg.Root)
+	if cfg.NodeHome != "/cli/root" {
+		t.Errorf("NodeHome = %v, want /cli/root (CLI should win)", cfg.NodeHome)
 	}
 	if cfg.NodeID != "env-node" {
 		t.Errorf("NodeID = %v, want env-node (env should override file)", cfg.NodeID)

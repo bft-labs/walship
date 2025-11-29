@@ -22,7 +22,7 @@ func TestApplyFileConfig(t *testing.T) {
 		{
 			name: "applies all valid config values",
 			fileConfig: fileConfig{
-				Root:           "/test/root",
+				NodeHome:       "/test/root",
 				NodeID:         "node-1",
 				PollInterval:   "5m",
 				CPUThreshold:   0.8,
@@ -32,7 +32,7 @@ func TestApplyFileConfig(t *testing.T) {
 			changed: map[string]bool{},
 			initial: Config{},
 			expected: Config{
-				Root:           "/test/root",
+				NodeHome:       "/test/root",
 				NodeID:         "node-1",
 				PollInterval:   5 * time.Minute,
 				CPUThreshold:   0.8,
@@ -44,26 +44,26 @@ func TestApplyFileConfig(t *testing.T) {
 		{
 			name: "respects changed flags",
 			fileConfig: fileConfig{
-				Root:   "/config/root",
-				NodeID: "config-node",
+				NodeHome: "/config/node_home",
+				NodeID:   "config-node",
 			},
-			changed: map[string]bool{"root": true},
+			changed: map[string]bool{"node-home": true},
 			initial: Config{
-				Root:   "/flag/root",
-				NodeID: "flag-node",
+				NodeHome: "/flag/node_home",
+				NodeID:   "flag-node",
 			},
 			expected: Config{
-				Root:   "/flag/root", // unchanged because flag was set
-				NodeID: "config-node",
+				NodeHome: "/flag/node_home", // unchanged because flag was set
+				NodeID:   "config-node",
 			},
 			wantErr: false,
 		},
 		{
 			name: "handles all field types correctly",
 			fileConfig: fileConfig{
-				Root:           "/root",
-				NodeID:         "node",
-				WALDir:         "/wal",
+				NodeHome:       "/tmp/root",
+				NodeID:         "node1",
+				WALDir:         "/tmp/custom_wal",
 				RemoteURL:      "http://example.com",
 				RemoteBase:     "/base",
 				Network:        "tcp",
@@ -86,9 +86,9 @@ func TestApplyFileConfig(t *testing.T) {
 			changed: map[string]bool{},
 			initial: Config{},
 			expected: Config{
-				Root:           "/root",
-				NodeID:         "node",
-				WALDir:         "/wal",
+				NodeHome:       "/tmp/root",
+				NodeID:         "node1",
+				WALDir:         "/tmp/custom_wal",
 				RemoteURL:      "http://example.com",
 				RemoteBase:     "/base",
 				Network:        "tcp",
@@ -128,8 +128,8 @@ func TestApplyFileConfig(t *testing.T) {
 
 			if !tt.wantErr {
 				// Check string fields
-				if cfg.Root != tt.expected.Root {
-					t.Errorf("Root = %v, want %v", cfg.Root, tt.expected.Root)
+				if cfg.NodeHome != tt.expected.NodeHome {
+					t.Errorf("NodeHome = %v, want %v", cfg.NodeHome, tt.expected.NodeHome)
 				}
 				if cfg.NodeID != tt.expected.NodeID {
 					t.Errorf("NodeID = %v, want %v", cfg.NodeID, tt.expected.NodeID)
@@ -177,7 +177,7 @@ func TestLoadFileConfig(t *testing.T) {
 	configPath := filepath.Join(tmpDir, "test-config.toml")
 
 	tomlContent := `
-root = "/test/root"
+node_home = "/tmp/root"
 node = "test-node"
 poll_interval = "5m"
 cpu_threshold = 0.8
@@ -194,8 +194,8 @@ verify = true
 		t.Fatalf("loadFileConfig() error = %v", err)
 	}
 
-	if fc.Root != "/test/root" {
-		t.Errorf("Root = %v, want /test/root", fc.Root)
+	if fc.NodeHome != "/tmp/root" {
+		t.Errorf("NodeHome = %v, want /tmp/root", fc.NodeHome)
 	}
 	if fc.NodeID != "test-node" {
 		t.Errorf("NodeID = %v, want test-node", fc.NodeID)
