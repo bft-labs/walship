@@ -29,9 +29,7 @@ type Config struct {
 	ChainID string
 
 	ServiceURL string
-	AuthKey    string
-
-	ConfigPollInterval time.Duration
+	AuthKey     string
 
 	PollInterval time.Duration
 	SendInterval time.Duration
@@ -52,18 +50,17 @@ type Config struct {
 // DefaultConfig returns a Config with default values.
 func DefaultConfig() Config {
 	return Config{
-		NodeID:             "default",
-		ConfigPollInterval: 1 * time.Minute,
-		PollInterval:       500 * time.Millisecond,
-		SendInterval:       5 * time.Second,
-		HardInterval:       10 * time.Second,
-		HTTPTimeout:        15 * time.Second,
-		CPUThreshold:       0.85,
-		NetThreshold:       0.70,
-		IfaceSpeedMbps:     1000,
-		MaxBatchBytes:      4 << 20, // 4MB
-		StateDir:           defaultStateDir(),
-		AuthKey:            os.Getenv("WALSHIP_AUTH_KEY"),
+		NodeID:         "default",
+		PollInterval:   500 * time.Millisecond,
+		SendInterval:   5 * time.Second,
+		HardInterval:   10 * time.Second,
+		HTTPTimeout:    15 * time.Second,
+		CPUThreshold:   0.85,
+		NetThreshold:   0.70,
+		IfaceSpeedMbps: 1000,
+		MaxBatchBytes:  4 << 20, // 4MB
+		StateDir:       defaultStateDir(),
+		AuthKey:         os.Getenv("WALSHIP_AUTH_KEY"),
 	}
 }
 
@@ -108,9 +105,6 @@ func (c *Config) Validate() error {
 	}
 	if c.SendInterval <= 0 {
 		return fmt.Errorf("send interval must be positive")
-	}
-	if c.ConfigPollInterval <= 0 {
-		c.ConfigPollInterval = 1 * time.Minute
 	}
 
 	return nil
