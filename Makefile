@@ -35,7 +35,7 @@ docker-build:
 
 docker-run:
 	docker run --rm \
-		-e WALSHIP_SERVICE_URL=http://localhost:8080/v1/ingest \
+		-e WALSHIP_SERVICE_URL=http://localhost:8080 \
 		-e WALSHIP_AUTH_KEY=test \
 		walship
 
