@@ -6,7 +6,9 @@ A lightweight agent that streams Cosmos node WAL data to [apphash.io](https://ap
 
 ## Prerequisites
 
-Enable memlogger in your node's `app.toml`:
+Memlogger must be integrated and enabled on your node. We ship Cosmos SDK releases with memlogger already baked in; if you run a custom fork, you can cherry-pick our single memlogger commit to enable it. For a step-by-step walkthrough, see the [Getting Started Guide](https://docs.apphash.io/getting-started), or book time via [Calendly](https://calendly.com/actor93kor/30min)—we can guide you live or handle it for you.
+
+After integration, ensure `$NODE_HOME/config/app.toml` includes the following section:
 
 ```toml
 [memlogger]
@@ -15,16 +17,23 @@ filter = true
 interval = "2s"
 ```
 
-> For full node setup (Cosmos SDK integration, app.go changes), see the [Getting Started Guide](https://apphash-docs.vercel.app/getting-started).
+Once enabled, WAL files will rotate under `<NODE_HOME>/data/log.wal/`.
 
 ## Installation
 
 ```bash
 # Download
 curl -LO https://github.com/bft-labs/cosmos-analyzer-shipper/releases/latest/download/walship_Linux_x86_64.tar.gz
-tar xzf walship_Linux_x86_64.tar.gz
+curl -LO https://github.com/bft-labs/cosmos-analyzer-shipper/releases/latest/download/checksums.txt
+
+# Verify (Linux)
+grep walship_Linux_x86_64.tar.gz checksums.txt | sha256sum --check -
+
+# Verify (macOS)
+grep walship_Linux_x86_64.tar.gz checksums.txt | shasum -a 256 --check -
 
 # Install
+tar xzf walship_Linux_x86_64.tar.gz
 sudo mv walship /usr/local/bin/
 ```
 
@@ -33,13 +42,11 @@ Other platforms: see [Releases](https://github.com/bft-labs/cosmos-analyzer-ship
 ## Quick Start
 
 ```bash
-walship \
-  --node-home ~/.osmosisd \
-  --service-url https://api.apphash.io \
+# Get your auth key: https://apphash.io/ → create project → Project Settings.
+NODE_HOME="$HOME/.osmosisd"  # e.g., ~/.neutrond, ~/.quasard
+walship --node-home "$NODE_HOME" \
   --auth-key <YOUR_AUTH_KEY>
 ```
-
-walship auto-discovers `chain-id` and `node-id` from your node's config files.
 
 ## Running as a Service
 
@@ -54,7 +61,6 @@ After=network-online.target
 User=validator
 ExecStart=/usr/local/bin/walship \
   --node-home /home/validator/.osmosisd \
-  --service-url https://api.apphash.io \
   --auth-key <YOUR_AUTH_KEY>
 Restart=always
 RestartSec=5
@@ -62,6 +68,8 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 ```
+
+Adjust `User`, `--node-home`, and `--auth-key` to match your environment. If you prefer not to keep the key in the unit file, you can supply `WALSHIP_AUTH_KEY` (and other flags) via an `EnvironmentFile`.
 
 Enable and start:
 
@@ -74,24 +82,14 @@ sudo journalctl -u walship -f  # view logs
 
 ## Configuration
 
-All flags can be set via environment variables with `WALSHIP_` prefix.
+Essential flags are below; run `walship -h` to see the full list. All flags can be set via environment variables with `WALSHIP_` prefix.
 
 ### Required
 
 | Flag | Env | Description |
 |------|-----|-------------|
-| `--node-home` | `WALSHIP_NODE_HOME` | Node home directory (e.g., `~/.osmosisd`) |
-| `--service-url` | `WALSHIP_SERVICE_URL` | `https://api.apphash.io` |
-| `--auth-key` | `WALSHIP_AUTH_KEY` | Your project auth key |
-
-### Optional
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--poll` | `500ms` | Poll interval for new WAL files |
-| `--send-interval` | `5s` | Batch send interval |
-| `--cpu-threshold` | `0.85` | Pause sending above this CPU usage |
-| `--net-threshold` | `0.70` | Pause sending above this network usage |
+| `--node-home` | `WALSHIP_NODE_HOME` | Node home directory (e.g., `~/.osmosisd`, `~/.<binary>d`) |
+| `--auth-key` | `WALSHIP_AUTH_KEY` | Project auth key from `apphash.io` → Project Settings |
 
 ### Config File
 
@@ -99,19 +97,20 @@ Alternatively, create `~/.walship/config.toml`:
 
 ```toml
 node_home = "/home/validator/.osmosisd"
-service_url = "https://api.apphash.io"
 auth_key = "your-key"
 ```
+
+## Additional Details
+
+- walship auto-discovers `chain-id` and `node-id` from your node's config files and genesis.
+- Data is sent to `api.apphash.io` (no custom endpoint or proxy configuration needed).
+- The auth key identifies your project; keep it private even though it is not highly privileged.
 
 ## Troubleshooting
 
 **"no index files found"**
 - Ensure memlogger is enabled in `app.toml`
-- Check WAL files exist: `ls ~/.osmosisd/data/log.wal/`
-
-**"connection refused"**
-- Verify `--service-url` is correct
-- Check network connectivity to api.apphash.io
+- Check WAL files exist in `<NODE_HOME>/data/log.wal/` (e.g., `~/.osmosisd/data/log.wal/`)
 
 ## Building from Source
 
@@ -125,10 +124,10 @@ cd cosmos-analyzer-shipper && make build
 
 ## Documentation
 
-- [Getting Started](https://apphash-docs.vercel.app/getting-started) - Full setup guide
-- [Node Configuration](https://apphash-docs.vercel.app/setup/configuration) - Detailed memlogger settings
-- [Architecture](https://apphash-docs.vercel.app/architecture/overview) - How it works
+- [Getting Started](https://docs.apphash.io/getting-started) - Full setup guide
+- [Node Configuration](https://docs.apphash.io/setup/configuration) - Detailed memlogger settings
+- [Architecture](https://docs.apphash.io/architecture/overview) - How it works
 
 ## License
 
-TBD
+Apache-2.0. See `LICENSE`.
