@@ -13,7 +13,7 @@ type fileConfig struct {
 	NodeID         string  `toml:"node_id"`
 	WALDir         string  `toml:"wal_dir"`
 	ServiceURL     string  `toml:"service_url"`
-	AuthKey         string  `toml:"api_key"`
+	AuthKey         string  `toml:"auth_key"`
 	PollInterval   string  `toml:"poll_interval"`
 	SendInterval   string  `toml:"send_interval"`
 	HardInterval   string  `toml:"hard_interval"`
