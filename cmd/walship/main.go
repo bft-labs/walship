@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime"
+	"runtime/debug"
 
 	"github.com/spf13/cobra"
 	pflag "github.com/spf13/pflag"
@@ -11,13 +13,21 @@ import (
 	agent "github.com/bft-labs/cosmos-analyzer-shipper/internal/agent"
 )
 
+func getVersion() string {
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" {
+		return info.Main.Version
+	}
+	return "dev"
+}
+
 func main() {
 	cfg := agent.DefaultConfig()
 	var cfgPath string
 
 	root := &cobra.Command{
-		Use:   "walship",
-		Short: "Ship MemLogger/WAL gzip frames using index metadata",
+		Use:     "walship",
+		Short:   "Stream Cosmos node data to apphash.io for consensus monitoring",
+		Version: fmt.Sprintf("%s %s/%s", getVersion(), runtime.GOOS, runtime.GOARCH),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Load config file first (default $HOME/.walship/config.toml), then apply flag overrides
 			// Determine config path
