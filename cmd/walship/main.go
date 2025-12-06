@@ -6,12 +6,44 @@ import (
 	"os"
 	"runtime"
 	"runtime/debug"
+	"strings"
 
 	"github.com/spf13/cobra"
 	pflag "github.com/spf13/pflag"
 
 	agent "github.com/bft-labs/cosmos-analyzer-shipper/internal/agent"
 )
+
+const helpBanner = `
+ █████   ███   █████   █████████   █████        █████████  █████   █████ █████ ███████████ 
+░░███   ░███  ░░███   ███░░░░░███ ░░███        ███░░░░░███░░███   ░░███ ░░███ ░░███░░░░░███
+ ░███   ░███   ░███  ░███    ░███  ░███       ░███    ░░░  ░███    ░███  ░███  ░███    ░███
+ ░███   ░███   ░███  ░███████████  ░███       ░░█████████  ░███████████  ░███  ░██████████ 
+ ░░███  █████  ███   ░███░░░░░███  ░███        ░░░░░░░░███ ░███░░░░░███  ░███  ░███░░░░░░  
+  ░░░█████░█████░    ░███    ░███  ░███      █ ███    ░███ ░███    ░███  ░███  ░███        
+    ░░███ ░░███      █████   █████ ███████████░░█████████  █████   █████ █████ █████       
+     ░░░   ░░░      ░░░░░   ░░░░░ ░░░░░░░░░░░  ░░░░░░░░░  ░░░░░   ░░░░░ ░░░░░ ░░░░░        
+`
+
+const helpDescription = `
+Stream your node's consensus feed to apphash.io without slowing your validator.
+
+Highlights:
+  - Batches and backpressures automatically so performance stays intact.
+  - Discovers chain/node IDs from your node home; configure via file, env, or flags.
+  - Safe defaults with tunable thresholds for CPU/network utilization.
+  - Requires apphash SDK integration and an API key—read the docs or email us.
+
+Docs: https://docs.apphash.io/getting-started
+Contact: actor93kor@gmail.com
+`
+
+var longHelp = strings.TrimSpace(helpBanner) + "\n\n" + strings.TrimSpace(helpDescription)
+
+var exampleUsage = strings.TrimSpace(`
+  walship --node-home ~/.mychain --auth-key <api-key>
+  walship --config $HOME/.walship/config.toml --once
+`)
 
 func getVersion() string {
 	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" {
@@ -26,7 +58,9 @@ func main() {
 
 	root := &cobra.Command{
 		Use:     "walship",
-		Short:   "Stream Cosmos node data to apphash.io for consensus monitoring",
+		Short:   "Stream your node's consensus feed to apphash.io without slowing your validator",
+		Long:    longHelp,
+		Example: exampleUsage,
 		Version: fmt.Sprintf("%s %s/%s", getVersion(), runtime.GOOS, runtime.GOARCH),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Load config file first (default $HOME/.walship/config.toml), then apply flag overrides
