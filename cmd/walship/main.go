@@ -117,7 +117,10 @@ func main() {
 	root.Flags().StringVar(&cfg.NodeHome, "node-home", "", "application home directory")
 	root.Flags().StringVar(&cfg.WALDir, "wal-dir", cfg.WALDir, "WAL directory containing .idx/.gz pairs")
 
-	root.Flags().StringVar(&cfg.ServiceURL, "service-url", cfg.ServiceURL, "base service URL (e.g., https://api.apphash.io)")
+	root.Flags().StringVar(&cfg.ServiceURL, "service-url", cfg.ServiceURL, fmt.Sprintf("base service URL (defaults to %s; override only for internal testing)", agent.DefaultServiceURL))
+	if err := root.Flags().MarkHidden("service-url"); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to hide service-url flag: %v\n", err)
+	}
 	root.Flags().StringVar(&cfg.AuthKey, "auth-key", cfg.AuthKey, "API key for authentication")
 
 	root.Flags().DurationVar(&cfg.PollInterval, "poll", cfg.PollInterval, "poll interval when idle")

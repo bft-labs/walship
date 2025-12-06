@@ -8,6 +8,9 @@ import (
 	"time"
 )
 
+// DefaultServiceURL is the default endpoint for shipping WAL data.
+const DefaultServiceURL = "https://api.apphash.io"
+
 // FrameMeta matches tools/memlogger/writer.go schema for index lines.
 // Fields are used to locate and read gzip members from the .gz file.
 type FrameMeta struct {
@@ -29,7 +32,7 @@ type Config struct {
 	ChainID string
 
 	ServiceURL string
-	AuthKey     string
+	AuthKey    string
 
 	PollInterval time.Duration
 	SendInterval time.Duration
@@ -51,6 +54,7 @@ type Config struct {
 func DefaultConfig() Config {
 	return Config{
 		NodeID:         "default",
+		ServiceURL:     DefaultServiceURL,
 		PollInterval:   500 * time.Millisecond,
 		SendInterval:   5 * time.Second,
 		HardInterval:   10 * time.Second,
@@ -60,7 +64,7 @@ func DefaultConfig() Config {
 		IfaceSpeedMbps: 1000,
 		MaxBatchBytes:  4 << 20, // 4MB
 		StateDir:       defaultStateDir(),
-		AuthKey:         os.Getenv("WALSHIP_AUTH_KEY"),
+		AuthKey:        os.Getenv("WALSHIP_AUTH_KEY"),
 	}
 }
 
@@ -87,7 +91,7 @@ func (c *Config) Validate() error {
 	}
 
 	if c.ServiceURL == "" {
-		return fmt.Errorf("service-url is required")
+		c.ServiceURL = DefaultServiceURL
 	}
 
 	// Ensure no trailing slash
