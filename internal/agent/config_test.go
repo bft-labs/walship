@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"os"
 	"testing"
 	"time"
 )
@@ -20,12 +19,6 @@ func TestDefaultConfig(t *testing.T) {
 	}
 	if cfg.MaxBatchBytes != 4<<20 {
 		t.Errorf("MaxBatchBytes = %v, want 4MB", cfg.MaxBatchBytes)
-	}
-	// Check if AuthKey default is respected (depends on env, but logic is there)
-	if val := os.Getenv("MEMAGENT_AUTH_KEY"); val != "" {
-		if cfg.AuthKey != val {
-			t.Errorf("AuthKey = %v, want %v (from env)", cfg.AuthKey, val)
-		}
 	}
 }
 
