@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"os"
 	"testing"
 	"time"
 )
@@ -15,29 +14,27 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.PollInterval != 500*time.Millisecond {
 		t.Errorf("PollInterval = %v, want 500ms", cfg.PollInterval)
 	}
+	if cfg.ServiceURL != DefaultServiceURL {
+		t.Errorf("ServiceURL = %v, want %v", cfg.ServiceURL, DefaultServiceURL)
+	}
 	if cfg.MaxBatchBytes != 4<<20 {
 		t.Errorf("MaxBatchBytes = %v, want 4MB", cfg.MaxBatchBytes)
-	}
-	// Check if AuthKey default is respected (depends on env, but logic is there)
-	if val := os.Getenv("MEMAGENT_AUTH_KEY"); val != "" {
-		if cfg.AuthKey != val {
-			t.Errorf("AuthKey = %v, want %v (from env)", cfg.AuthKey, val)
-		}
 	}
 }
 
 func TestConfig_Validate(t *testing.T) {
 	tests := []struct {
-		name    string
-		config  Config
-		wantErr bool
+		name           string
+		config         Config
+		wantErr        bool
+		wantServiceURL string
 	}{
 		{
 			name: "valid minimal config",
 			config: Config{
 				NodeHome:     "/tmp/root",
 				WALDir:       "/tmp/wal",
-				ServiceURL:    "http://localhost:8080",
+				ServiceURL:   "http://localhost:8080",
 				PollInterval: time.Second,
 				SendInterval: time.Second,
 			},
@@ -46,7 +43,7 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "missing wal dir and node-home",
 			config: Config{
-				ServiceURL:    "http://localhost:8080",
+				ServiceURL:   "http://localhost:8080",
 				PollInterval: time.Second,
 				SendInterval: time.Second,
 			},
@@ -57,7 +54,7 @@ func TestConfig_Validate(t *testing.T) {
 			config: Config{
 				NodeHome:     "/tmp/root",
 				NodeID:       "default",
-				ServiceURL:    "http://localhost:8080",
+				ServiceURL:   "http://localhost:8080",
 				PollInterval: time.Second,
 				SendInterval: time.Second,
 			},
@@ -71,6 +68,17 @@ func TestConfig_Validate(t *testing.T) {
 				SendInterval: time.Second,
 			},
 			wantErr: true,
+		},
+		{
+			name: "service url defaults when omitted",
+			config: Config{
+				NodeHome:     "/tmp/root",
+				WALDir:       "/tmp/wal",
+				PollInterval: time.Second,
+				SendInterval: time.Second,
+			},
+			wantErr:        false,
+			wantServiceURL: DefaultServiceURL,
 		},
 		{
 			name: "valid with webhook url",
@@ -89,41 +97,19 @@ func TestConfig_Validate(t *testing.T) {
 			config: Config{
 				NodeHome:     "/tmp/root",
 				WALDir:       "/tmp/wal",
-				ServiceURL:    "http://localhost:8080",
+				ServiceURL:   "http://localhost:8080",
 				PollInterval: -1,
 				SendInterval: time.Second,
 			},
 			wantErr: true,
 		},
 		{
-			name: "missing node-home but has chain-id and node-id",
+			name: "missing node-home is always error",
 			config: Config{
 				ChainID:      "test-chain",
 				NodeID:       "test-node",
 				WALDir:       "/tmp/wal",
-				ServiceURL:    "http://localhost:8080",
-				PollInterval: time.Second,
-				SendInterval: time.Second,
-			},
-			wantErr: false,
-		},
-		{
-			name: "missing node-home and chain-id",
-			config: Config{
-				NodeID:       "test-node",
-				WALDir:       "/tmp/wal",
-				ServiceURL:    "http://localhost:8080",
-				PollInterval: time.Second,
-				SendInterval: time.Second,
-			},
-			wantErr: true,
-		},
-		{
-			name: "missing node-home and node-id",
-			config: Config{
-				ChainID:      "test-chain",
-				WALDir:       "/tmp/wal",
-				ServiceURL:    "http://localhost:8080",
+				ServiceURL:   "http://localhost:8080",
 				PollInterval: time.Second,
 				SendInterval: time.Second,
 			},
@@ -133,8 +119,12 @@ func TestConfig_Validate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.config.Validate(); (err != nil) != tt.wantErr {
+			err := tt.config.Validate()
+			if (err != nil) != tt.wantErr {
 				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err == nil && tt.wantServiceURL != "" && tt.config.ServiceURL != tt.wantServiceURL {
+				t.Errorf("ServiceURL = %v, want %v", tt.config.ServiceURL, tt.wantServiceURL)
 			}
 		})
 	}
@@ -145,7 +135,7 @@ func TestConfig_Validate_Derivations(t *testing.T) {
 	c1 := Config{
 		NodeHome:     "/app",
 		NodeID:       "node1",
-		ServiceURL:    "http://example.com",
+		ServiceURL:   "http://example.com",
 		PollInterval: time.Second,
 		SendInterval: time.Second,
 	}

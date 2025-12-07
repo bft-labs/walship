@@ -1,201 +1,134 @@
-# walship (cosmos-analyzer-shipper)
+# walship
 
-Walship is a lightweight, operator-friendly agent that streams CometBFT WAL frames (MemLogger/WAL) to a backend system for block-level analytics, replay, debugging, and monitoring.
+![Latest Release](https://img.shields.io/github/v/release/bft-labs/cosmos-analyzer-shipper)
 
-## Quickstart
+A lightweight agent that streams Cosmos node WAL data to [apphash.io](https://apphash.io) for consensus monitoring and debugging.
 
-### 1. Download binary
-```bash
-wget https://github.com/bft-labs/cosmos-analyzer-shipper/releases/latest/download/walship_Linux_x86_64.tar.gz
-tar xzf walship_Linux_x86_64.tar.gz
-chmod +x walship
+## Prerequisites
+
+Memlogger must be integrated and enabled on your node. We ship Cosmos SDK releases with memlogger already baked in; if you run a custom fork, you can cherry-pick our single memlogger commit to enable it. For a step-by-step walkthrough, see the [Getting Started Guide](https://docs.apphash.io/getting-started), or book time via [Calendly](https://calendly.com/actor93kor/30min)—we can guide you live or handle it for you.
+
+After integration, ensure `$NODE_HOME/config/app.toml` includes the following section:
+
+```toml
+[memlogger]
+enabled = true
+filter = true
+interval = "2s"
 ```
 
-### 2. Run walship
-
-walship auto-discovers:
-* `chain-id` → from config/genesis.json
-* `node-id` → from config/node_key.json
-* WAL paths → data/cs.wal/ or data/log.wal/
-
-```bash
-./walship \
-  --node-home /path/to/.evmosd \
-  --service-url https://api.example.com/v1/ingest \
-  --auth-key=$MY_AUTH_KEY
-```
-
-
-## Features
-
-- Ships compressed WAL frames (`*.wal.gz`) using `.idx` sidecar files to determine byte ranges (no full file read).
-- Auto-detects node metadata (chain-id, node-id) from node files.
-- Persists progress in `$HOME/.cosmos-analyzer-shipper/agent-status.json` to avoid duplicates.
-- Defers sends under high CPU/network; hard interval forces progress.
+Once enabled, WAL files will rotate under `<NODE_HOME>/data/log.wal/`.
 
 ## Installation
 
-### Pre-built Binaries
-
-Download from [Releases](https://github.com/bft-labs/cosmos-analyzer-shipper/releases):
-
 ```bash
-wget https://github.com/bft-labs/cosmos-analyzer-shipper/releases/latest/download/walship_Linux_x86_64.tar.gz
-tar xzf walship_Linux_x86_64.tar.gz
-./walship --help
+FILE=walship_Linux_x86_64.tar.gz  # pick the tarball for your OS/arch
+curl -LO https://github.com/bft-labs/cosmos-analyzer-shipper/releases/latest/download/$FILE
+curl -LO https://github.com/bft-labs/cosmos-analyzer-shipper/releases/latest/download/checksums.txt
+
+# Verify (Linux)
+grep "$FILE" checksums.txt | sha256sum --check -
+
+# Verify (macOS)
+grep "$FILE" checksums.txt | shasum -a 256 --check -
+
+# Install
+tar xzf "$FILE"
+sudo mv walship /usr/local/bin/
 ```
 
-### Docker
+Other platforms: see [Releases](https://github.com/bft-labs/cosmos-analyzer-shipper/releases).
+Checksums (`checksums.txt`) are published with each release.
+
+## Quick Start
 
 ```bash
-docker run -d \
-  --name walship \
-  -v /path/to/.evmosd:/node \
-  -e WALSHIP_NODE_HOME=/node \
-  -e WALSHIP_SERVICE_URL=https://api.example.com/v1/ingest \
-  -e WALSHIP_AUTH_KEY=$MY_AUTH_KEY \
-  --restart unless-stopped \
-  ghcr.io/bft-labs/cosmos-analyzer-shipper:latest
+# Get your auth key: https://apphash.io/ → create project → Project Settings.
+NODE_HOME="$HOME/.osmosisd"  # e.g., ~/.neutrond, ~/.quasard
+walship --node-home "$NODE_HOME" \
+  --auth-key <YOUR_AUTH_KEY>
 ```
 
-### Build from Source
+## Running as a Service
+
+Create `/etc/systemd/system/walship.service`:
+
+```ini
+[Unit]
+Description=Walship
+After=network-online.target
+
+[Service]
+User=validator
+ExecStart=/usr/local/bin/walship \
+  --node-home /home/validator/.osmosisd \
+  --auth-key <YOUR_AUTH_KEY>
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Adjust `User`, `--node-home`, and `--auth-key` to match your environment. If you prefer not to keep the key in the unit file, you can supply `WALSHIP_AUTH_KEY` (and other flags) via an `EnvironmentFile`.
+
+Enable and start:
 
 ```bash
-git clone https://github.com/bft-labs/cosmos-analyzer-shipper
-cd cosmos-analyzer-shipper
-make build
-./walship --help
+sudo systemctl daemon-reload
+sudo systemctl enable --now walship
+sudo journalctl -u walship -f  # view logs
 ```
+
 
 ## Configuration
 
-Configuration is loaded in the following order (highest to lowest priority):
-
-1. **CLI Flags** (e.g., `--service-url`)
-2. **Environment Variables** (e.g., `WALSHIP_SERVICE_URL`)
-3. **Config File** (default: `$HOME/.walship/config.toml`)
+Essential flags are below; run `walship -h` to see the full list. All flags can be set via environment variables with `WALSHIP_` prefix.
 
 ### Required
 
-You must provide **either**:
-- `--node-home` (node home directory) - Auto-discovers chain-id and node-id
-- **OR** `--wal-dir` + `--chain-id` + `--node-id` explicitly
+| Flag | Env | Description |
+|------|-----|-------------|
+| `--node-home` | `WALSHIP_NODE_HOME` | Node home directory (e.g., `~/.osmosisd`, `~/.<binary>d`) |
+| `--auth-key` | `WALSHIP_AUTH_KEY` | Project auth key from `apphash.io` → Project Settings |
 
-And:
-- `--service-url`
+### Config File
 
-### Environment Variables
-
-All CLI flags have a `WALSHIP_` prefixed environment variable equivalent:
-
-| Flag | Environment Variable | Default | Description |
-|------|---------------------|---------|-------------|
-| `--node-home` | `WALSHIP_NODE_HOME` | (required) | Node home directory (contains `config/`, `data/`) |
-| `--chain-id` | `WALSHIP_CHAIN_ID` | (auto-discovered) | Override chain ID from genesis.json |
-| `--node-id` | `WALSHIP_NODE_ID` | `"default"` | Override node ID |
-| `--wal-dir` | `WALSHIP_WAL_DIR` | (auto-discovered) | WAL directory path |
-| `--service-url` | `WALSHIP_SERVICE_URL` | (required) | Service URL (e.g., `https://api.apphash.io/v1/ingest`) |
-| `--auth-key` | `WALSHIP_AUTH_KEY` | `""` | Authorization key |
-| `--poll` | `WALSHIP_POLL_INTERVAL` | `"500ms"` | Poll interval when idle |
-| `--send-interval` | `WALSHIP_SEND_INTERVAL` | `"5s"` | Soft send interval |
-| `--hard-interval` | `WALSHIP_HARD_INTERVAL` | `"10s"` | Hard send interval (override gating) |
-| `--timeout` | `WALSHIP_HTTP_TIMEOUT` | `"15s"` | HTTP request timeout |
-| `--cpu-threshold` | `WALSHIP_CPU_THRESHOLD` | `0.85` | Max CPU usage (0.0-1.0) before delaying send |
-| `--net-threshold` | `WALSHIP_NET_THRESHOLD` | `0.70` | Max network usage (0.0-1.0) before delaying send |
-| `--iface` | `WALSHIP_IFACE` | `""` | Network interface to monitor (optional) |
-| `--iface-speed` | `WALSHIP_IFACE_SPEED` | `1000` | Interface speed in Mbps |
-| `--max-batch-bytes` | `WALSHIP_MAX_BATCH_BYTES` | `4194304` | Maximum compressed bytes per batch (4MB) |
-| `--state-dir` | `WALSHIP_STATE_DIR` | `$HOME/.walship` | State directory for agent-status.json |
-
-### Config File Example
-
-Create `$HOME/.walship/config.toml`:
+Alternatively, create `~/.walship/config.toml`:
 
 ```toml
-node_home = "/path/to/node"
-service_url = "https://api.example.com/v1/ingest"
-auth_key = "your-secret-key"
-
-poll_interval = "500ms"
-send_interval = "5s"
-hard_interval = "10s"
-
-cpu_threshold = 0.85
-net_threshold = 0.70
+node_home = "/home/validator/.osmosisd"
+auth_key = "your-key"
 ```
 
-## Usage Examples
+## Additional Details
 
-### Auto Discovery (most users)
-
-Automatically discovers chain-id and node-id from node files:
-
-```bash
-./walship \
-  --node-home /home/validator/.osmosisd \
-  --service-url https://api.example.com/v1/ingest \
-  --auth-key your-secret-key
-```
-
-Internally sends to:
-- WAL frames: `POST https://api.example.com/v1/ingest/wal-frames`
-- Config (future): `POST https://api.example.com/v1/ingest/config`
-
-Node metadata (chain-id, node-id) is sent via headers:
-- `X-Cosmos-Analyzer-Chain-Id`
-- `X-Cosmos-Analyzer-Node-Id`
-
-
-### Docker
-
-```bash
-docker run -d \
-  --name walship \
-  -v /path/to/.evmd:/node \
-  -e WALSHIP_NODE_HOME=/node \
-  -e WALSHIP_SERVICE_URL=https://api.example.com/v1/ingest \
-  -e WALSHIP_AUTH_KEY=$MY_AUTH_KEY \
-  --restart unless-stopped \
-  ghcr.io/bft-labs/cosmos-analyzer-shipper:latest
-```
-
-## Development
-
-```bash
-make test
-go test ./... -cover
-make build
-```
-
-### Docker build:
-
-```bash
-# For manual use (multi-stage build from source)
-docker build -t walship .
-```
-
-### Local Development
-
-```bash
-# Build
-make build
-
-# Run with debug output
-./walship --node-home /path/to/node --service-url http://localhost:8080/v1/ingest --meta
-```
+- walship auto-discovers `chain-id` and `node-id` from your node's config files and genesis.
+- Data is sent to `api.apphash.io` (no custom endpoint or proxy configuration needed).
+- The auth key identifies your project; keep it private even though it is not highly privileged.
 
 ## Troubleshooting
 
-### "no index files found"
+**"no index files found"**
+- Ensure memlogger is enabled in `app.toml`
+- Check WAL files exist in `<NODE_HOME>/data/log.wal/` (e.g., `~/.osmosisd/data/log.wal/`)
 
-Ensure your WAL directory contains `.idx` files:
+## Building from Source
+
+Requires Go 1.22+
+
 ```bash
-ls -la /path/to/data/log.wal/node-*/
+git clone https://github.com/bft-labs/cosmos-analyzer-shipper
+cd cosmos-analyzer-shipper && make build
+./walship --help
 ```
 
-### "chain-id is required"
+## Documentation
 
-Either provide `--node-home` (for auto-discovery) or explicitly set:
-```bash
---chain-id my-chain --node-id abc123 --wal-dir /path/to/wal
-```
+- [Getting Started](https://docs.apphash.io/getting-started) - Full setup guide
+- [Node Configuration](https://docs.apphash.io/setup/configuration) - Detailed memlogger settings
+- [Architecture](https://docs.apphash.io/architecture/overview) - How it works
+
+## License
+
+Apache-2.0. See `LICENSE`.

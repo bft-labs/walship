@@ -14,6 +14,11 @@ import (
 	"time"
 )
 
+const (
+	walFramesEndpoint = "/v1/ingest/wal-frames"
+	configEndpoint    = "/v1/ingest/config"
+)
+
 type batchFrame struct {
 	Meta       FrameMeta
 	Compressed []byte
@@ -27,6 +32,11 @@ func Run(ctx context.Context, cfg Config) error {
 	if err := os.MkdirAll(cfg.StateDir, 0o700); err != nil {
 		return fmt.Errorf("state dir: %w", err)
 	}
+
+	// Start config watcher for dynamic configuration updates
+	cfgPtr := &cfg
+	watcher := NewConfigWatcher(cfgPtr)
+	go watcher.Run(ctx)
 
 	// Load prior state; if none, start from the oldest index (first logs)
 	st, _ := loadState(cfg.StateDir)
@@ -182,7 +192,7 @@ func trySend(cfg Config, httpClient *http.Client, batch *[]batchFrame, batchByte
 		manifest = append(manifest, fr.Meta)
 		advance += int64(fr.IdxLineLen)
 	}
-	url := cfg.ServiceURL + "/wal-frames"
+	url := cfg.ServiceURL + walFramesEndpoint
 	req, err := http.NewRequest(http.MethodPost, url, &buf)
 	if err != nil {
 		return

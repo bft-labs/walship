@@ -378,3 +378,37 @@ func TestTrySend_BatchOverflow(t *testing.T) {
 		t.Error("Batch should be cleared after successful send")
 	}
 }
+
+func TestTrySend_URLConstruction(t *testing.T) {
+	// Test that base URL is correctly constructed to full path for WAL frames
+	var requestPath string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	cfg := Config{
+		ServiceURL: ts.URL, // Base URL only, no /v1/ingest/wal-frames
+		ChainID:   "test-chain",
+		NodeID:    "test-node",
+	}
+
+	batch := []batchFrame{
+		{
+			Meta:       FrameMeta{File: "000.gz", Frame: 1},
+			Compressed: []byte("data"),
+			IdxLineLen: 10,
+		},
+	}
+	batchBytes := 4
+	st := state{IdxOffset: 0}
+	back := newBackoff(time.Millisecond, time.Second)
+
+	trySend(cfg, http.DefaultClient, &batch, &batchBytes, &st, "000.idx", nil, time.Now(), back)
+
+	expectedPath := "/v1/ingest/wal-frames"
+	if requestPath != expectedPath {
+		t.Errorf("Request path = %v, want %v", requestPath, expectedPath)
+	}
+}

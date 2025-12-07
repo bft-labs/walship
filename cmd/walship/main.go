@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime"
+	"runtime/debug"
+	"strings"
 
 	"github.com/spf13/cobra"
 	pflag "github.com/spf13/pflag"
@@ -11,13 +14,54 @@ import (
 	agent "github.com/bft-labs/cosmos-analyzer-shipper/internal/agent"
 )
 
+const helpBanner = `
+ █████   ███   █████   █████████   █████        █████████  █████   █████ █████ ███████████ 
+░░███   ░███  ░░███   ███░░░░░███ ░░███        ███░░░░░███░░███   ░░███ ░░███ ░░███░░░░░███
+ ░███   ░███   ░███  ░███    ░███  ░███       ░███    ░░░  ░███    ░███  ░███  ░███    ░███
+ ░███   ░███   ░███  ░███████████  ░███       ░░█████████  ░███████████  ░███  ░██████████ 
+ ░░███  █████  ███   ░███░░░░░███  ░███        ░░░░░░░░███ ░███░░░░░███  ░███  ░███░░░░░░  
+  ░░░█████░█████░    ░███    ░███  ░███      █ ███    ░███ ░███    ░███  ░███  ░███        
+    ░░███ ░░███      █████   █████ ███████████░░█████████  █████   █████ █████ █████       
+     ░░░   ░░░      ░░░░░   ░░░░░ ░░░░░░░░░░░  ░░░░░░░░░  ░░░░░   ░░░░░ ░░░░░ ░░░░░        
+`
+
+const helpDescription = `
+Stream your node's consensus feed to apphash.io without slowing your validator.
+
+Highlights:
+  - Batches and backpressures automatically so performance stays intact.
+  - Discovers chain/node IDs from your node home; configure via file, env, or flags.
+  - Safe defaults with tunable thresholds for CPU/network utilization.
+  - Requires apphash SDK integration and an API key—read the docs or email us.
+
+Docs: https://docs.apphash.io/getting-started
+Contact: actor93kor@gmail.com
+`
+
+var longHelp = strings.TrimSpace(helpBanner) + "\n\n" + strings.TrimSpace(helpDescription)
+
+var exampleUsage = strings.TrimSpace(`
+  walship --node-home ~/.mychain --auth-key <api-key>
+  walship --config $HOME/.walship/config.toml --once
+`)
+
+func getVersion() string {
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" {
+		return info.Main.Version
+	}
+	return "dev"
+}
+
 func main() {
 	cfg := agent.DefaultConfig()
 	var cfgPath string
 
 	root := &cobra.Command{
-		Use:   "walship",
-		Short: "Ship MemLogger/WAL gzip frames using index metadata",
+		Use:     "walship",
+		Short:   "Stream your node's consensus feed to apphash.io without slowing your validator",
+		Long:    longHelp,
+		Example: exampleUsage,
+		Version: fmt.Sprintf("%s %s/%s", getVersion(), runtime.GOOS, runtime.GOARCH),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Load config file first (default $HOME/.walship/config.toml), then apply flag overrides
 			// Determine config path
@@ -71,11 +115,12 @@ func main() {
 	// Flags
 	root.Flags().StringVar(&cfgPath, "config", "", "path to config file (default: $HOME/.walship/config.toml)")
 	root.Flags().StringVar(&cfg.NodeHome, "node-home", "", "application home directory")
-	root.Flags().StringVar(&cfg.ChainID, "chain-id", cfg.ChainID, "chain id (override genesis.json)")
-	root.Flags().StringVar(&cfg.NodeID, "node-id", cfg.NodeID, "node id (directory suffix)")
 	root.Flags().StringVar(&cfg.WALDir, "wal-dir", cfg.WALDir, "WAL directory containing .idx/.gz pairs")
 
-	root.Flags().StringVar(&cfg.ServiceURL, "service-url", cfg.ServiceURL, "webhook URL (e.g., https://api.apphash.io/v1/ingest)")
+	root.Flags().StringVar(&cfg.ServiceURL, "service-url", cfg.ServiceURL, fmt.Sprintf("base service URL (defaults to %s; override only for internal testing)", agent.DefaultServiceURL))
+	if err := root.Flags().MarkHidden("service-url"); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to hide service-url flag: %v\n", err)
+	}
 	root.Flags().StringVar(&cfg.AuthKey, "auth-key", cfg.AuthKey, "API key for authentication")
 
 	root.Flags().DurationVar(&cfg.PollInterval, "poll", cfg.PollInterval, "poll interval when idle")
