@@ -42,34 +42,14 @@ changelog:
       - '^docs:'
       - '^test:'
 
-# Docker images
-dockers:
-  - image_templates:
-      - "ghcr.io/bft-labs/walship:{{ .Tag }}-amd64"
-      - "ghcr.io/bft-labs/walship:latest-amd64"
+# Docker images (v2)
+dockers_v2:
+  - images:
+      - "ghcr.io/bft-labs/walship"
+    tags:
+      - "{{ .Tag }}"
+      - "latest"
     dockerfile: Dockerfile.goreleaser
-    use: buildx
-    build_flag_templates:
-      - "--platform=linux/amd64"
-
-  - image_templates:
-      - "ghcr.io/bft-labs/walship:{{ .Tag }}-arm64"
-      - "ghcr.io/bft-labs/walship:latest-arm64"
-    dockerfile: Dockerfile.goreleaser
-    use: buildx
-    goarch: arm64
-    build_flag_templates:
-      - "--platform=linux/arm64"
-
-docker_manifests:
-  - name_template: "ghcr.io/bft-labs/walship:{{ .Tag }}"
-    image_templates:
-      - "ghcr.io/bft-labs/walship:{{ .Tag }}-amd64"
-      - "ghcr.io/bft-labs/walship:{{ .Tag }}-arm64"
-  - name_template: "ghcr.io/bft-labs/walship:latest"
-    image_templates:
-      - "ghcr.io/bft-labs/walship:latest-amd64"
-      - "ghcr.io/bft-labs/walship:latest-arm64"
 
 release:
   github:

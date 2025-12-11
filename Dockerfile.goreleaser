@@ -6,8 +6,9 @@ RUN apk add --no-cache ca-certificates tzdata
 
 WORKDIR /app
 
-# GoReleaser will copy the pre-built binary as 'walship'
-COPY walship /app/walship
+# GoReleaser v2 uses TARGETPLATFORM for multi-arch builds
+ARG TARGETPLATFORM
+COPY ${TARGETPLATFORM}/walship /app/walship
 
 # Create a non-root user
 RUN addgroup -S walship && adduser -S walship -G walship
