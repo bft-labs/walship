@@ -27,6 +27,9 @@ type batchFrame struct {
 }
 
 func Run(ctx context.Context, cfg Config) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	if cfg.ServiceURL == "" {
 		return fmt.Errorf("service-url is required")
 	}
@@ -38,6 +41,7 @@ func Run(ctx context.Context, cfg Config) error {
 	cfgPtr := &cfg
 	watcher := NewConfigWatcher(cfgPtr)
 	go watcher.Run(ctx)
+	go walCleanupLoop(ctx, cfg.WALDir, cfg.StateDir)
 
 	// Load prior state; if none, start from the oldest index (first logs)
 	st, _ := loadState(cfg.StateDir)
@@ -137,7 +141,13 @@ func Run(ctx context.Context, cfg Config) error {
 			st.CurGz = fm.File
 		}
 		if cfg.Meta {
-			fmt.Fprintf(os.Stderr, "frame file=%s seq=%d off=%d len=%d recs=%d\n", fm.File, fm.Frame, fm.Off, fm.Len, fm.Recs)
+			logger.Info().
+				Str("file", fm.File).
+				Uint64("frame", fm.Frame).
+				Uint64("off", fm.Off).
+				Uint64("len", fm.Len).
+				Uint32("recs", fm.Recs).
+				Msg("frame metadata")
 		}
 		// Read compressed bytes for this frame
 		b, rerr := preadSection(gz, int64(fm.Off), int64(fm.Len))
@@ -197,37 +207,37 @@ func trySend(cfg Config, httpClient *http.Client, batch *[]batchFrame, batchByte
 
 	manifestJSON, err := json.Marshal(manifest)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error marshaling manifest: %v\n", err)
+		logger.Error().Err(err).Msg("marshal manifest")
 		back.Sleep()
 		return
 	}
 	manifestPart, err := writer.CreateFormField("manifest")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating manifest field: %v\n", err)
+		logger.Error().Err(err).Msg("create manifest field")
 		back.Sleep()
 		return
 	}
 	if _, err := manifestPart.Write(manifestJSON); err != nil {
-		fmt.Fprintf(os.Stderr, "Error writing manifest field: %v\n", err)
+		logger.Error().Err(err).Msg("write manifest field")
 		back.Sleep()
 		return
 	}
 
 	framesPart, err := writer.CreateFormFile("frames", curIdxBase)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating frames field: %v\n", err)
+		logger.Error().Err(err).Msg("create frames field")
 		back.Sleep()
 		return
 	}
 	for _, fr := range *batch {
 		if _, err := framesPart.Write(fr.Compressed); err != nil {
-			fmt.Fprintf(os.Stderr, "Error writing frames payload: %v\n", err)
+			logger.Error().Err(err).Msg("write frames payload")
 			back.Sleep()
 			return
 		}
 	}
 	if err := writer.Close(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error finalizing multipart payload: %v\n", err)
+		logger.Error().Err(err).Msg("finalize multipart payload")
 		back.Sleep()
 		return
 	}
@@ -245,19 +255,25 @@ func trySend(cfg Config, httpClient *http.Client, batch *[]batchFrame, batchByte
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error sending batch: %v\n", err)
+		logger.Error().Err(err).Msg("send batch")
 		back.Sleep()
 		return
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode/100 != 2 {
 		body, _ := io.ReadAll(resp.Body)
-		fmt.Fprintf(os.Stderr, "Server returned error: status=%d body=%s\n", resp.StatusCode, string(body))
+		logger.Error().
+			Int("status", resp.StatusCode).
+			Str("body", string(body)).
+			Msg("server returned error")
 		back.Sleep()
 		return
 	}
 
-	fmt.Fprintf(os.Stderr, "Successfully sent batch of %d frames (%d bytes)\n", len(*batch), *batchBytes)
+	logger.Info().
+		Int("frames", len(*batch)).
+		Int("bytes", *batchBytes).
+		Msg("sent batch")
 
 	// Success: commit idx offset
 	st.IdxOffset += advance

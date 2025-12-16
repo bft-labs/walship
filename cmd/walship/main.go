@@ -56,6 +56,8 @@ func main() {
 	cfg := agent.DefaultConfig()
 	var cfgPath string
 
+	log := agent.Logger()
+
 	root := &cobra.Command{
 		Use:     "walship",
 		Short:   "Stream your node's consensus feed to apphash.io without slowing your validator",
@@ -103,7 +105,7 @@ func main() {
 			if len(logCfg.AuthKey) > 0 {
 				logCfg.AuthKey = "*****"
 			}
-			fmt.Fprintf(os.Stderr, "Configuration: %+v\n", logCfg)
+			log.Info().Interface("config", logCfg).Msg("configuration")
 
 			if err := agent.Run(context.Background(), cfg); err != nil {
 				return err
@@ -119,7 +121,7 @@ func main() {
 
 	root.Flags().StringVar(&cfg.ServiceURL, "service-url", cfg.ServiceURL, fmt.Sprintf("base service URL (defaults to %s; override only for internal testing)", agent.DefaultServiceURL))
 	if err := root.Flags().MarkHidden("service-url"); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: failed to hide service-url flag: %v\n", err)
+		log.Info().Err(err).Msg("failed to hide service-url flag")
 	}
 	root.Flags().StringVar(&cfg.AuthKey, "auth-key", cfg.AuthKey, "API key for authentication")
 
@@ -135,7 +137,7 @@ func main() {
 
 	root.Flags().StringVar(&cfg.StateDir, "state-dir", cfg.StateDir, "state directory for status.json (defaults to wal-dir)")
 	if err := root.Flags().MarkHidden("state-dir"); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: failed to hide state-dir flag: %v\n", err)
+		log.Info().Err(err).Msg("failed to hide state-dir flag")
 	}
 	root.Flags().DurationVar(&cfg.HTTPTimeout, "timeout", cfg.HTTPTimeout, "HTTP timeout")
 	root.Flags().BoolVar(&cfg.Verify, "verify", cfg.Verify, "verify CRC/line counts while reading (debug)")
@@ -143,7 +145,7 @@ func main() {
 	root.Flags().BoolVar(&cfg.Once, "once", cfg.Once, "process available frames and exit")
 
 	if err := root.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "walship: %v\n", err)
+		log.Error().Err(err).Msg("walship")
 		os.Exit(1)
 	}
 }

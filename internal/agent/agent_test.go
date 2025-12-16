@@ -6,12 +6,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -31,9 +33,43 @@ func TestTrySend(t *testing.T) {
 		}
 
 		// Verify body
-		body, _ := io.ReadAll(r.Body)
-		if string(body) != "compressed-data" {
-			t.Errorf("Body = %v, want compressed-data", string(body))
+		mediaType, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+		if err != nil {
+			t.Fatalf("parse content-type: %v", err)
+		}
+		if !strings.HasPrefix(mediaType, "multipart/") {
+			t.Fatalf("expected multipart content type, got %s", mediaType)
+		}
+		mr := multipart.NewReader(r.Body, params["boundary"])
+		var framesPayload []byte
+		var hasManifest bool
+		for {
+			part, err := mr.NextPart()
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			if err != nil {
+				t.Fatalf("multipart read: %v", err)
+			}
+			data, err := io.ReadAll(part)
+			if err != nil {
+				t.Fatalf("read part: %v", err)
+			}
+			switch part.FormName() {
+			case "manifest":
+				hasManifest = len(data) > 0
+			case "frames":
+				framesPayload = data
+			}
+		}
+		if len(framesPayload) == 0 {
+			t.Fatalf("frames payload missing")
+		}
+		if string(framesPayload) != "compressed-data" {
+			t.Errorf("Body = %v, want compressed-data", string(framesPayload))
+		}
+		if !hasManifest {
+			t.Fatalf("manifest payload missing")
 		}
 
 		w.WriteHeader(http.StatusOK)
@@ -42,9 +78,9 @@ func TestTrySend(t *testing.T) {
 
 	cfg := Config{
 		ServiceURL: ts.URL,
-		ChainID:   "test-chain",
-		NodeID:    "test-node",
-		AuthKey:   "secret",
+		ChainID:    "test-chain",
+		NodeID:     "test-node",
+		AuthKey:    "secret",
 	}
 
 	batch := []batchFrame{
@@ -121,7 +157,7 @@ func TestRun_Startup(t *testing.T) {
 	cfg := Config{
 		NodeHome:     tmpDir,
 		WALDir:       walDir,
-		ServiceURL:    "http://localhost:8080",
+		ServiceURL:   "http://localhost:8080",
 		PollInterval: time.Millisecond,
 		StateDir:     filepath.Join(tmpDir, ".walship"),
 	}
@@ -179,7 +215,7 @@ func TestTrySend_Timeout(t *testing.T) {
 	defer ts.Close()
 
 	cfg := Config{
-		ServiceURL:   ts.URL,
+		ServiceURL:  ts.URL,
 		HTTPTimeout: 10 * time.Millisecond,
 	}
 	httpClient := &http.Client{Timeout: cfg.HTTPTimeout}
@@ -204,14 +240,14 @@ func TestRun_MissingWALDir(t *testing.T) {
 	// Test that Run returns error when WALDir is empty/invalid
 	cfg := Config{
 		ServiceURL: "http://test",
-		StateDir:  "/tmp",
+		StateDir:   "/tmp",
 		// WALDir is empty - should fail in oldestIndex
 	}
 	err := Run(context.Background(), cfg)
 	if err == nil {
 		t.Error("Run() expected error for missing/invalid WALDir")
 	}
-	fmt.Fprintf(os.Stdout, "Run() error = %v\n", err)
+	t.Logf("Run() error = %v", err)
 }
 
 func TestTrySend_StateVerification(t *testing.T) {
@@ -224,7 +260,7 @@ func TestTrySend_StateVerification(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfg := Config{
 		ServiceURL: ts.URL,
-		StateDir:  tmpDir,
+		StateDir:   tmpDir,
 	}
 
 	batch := []batchFrame{
@@ -286,7 +322,7 @@ func TestRun_OnceMode(t *testing.T) {
 	}
 
 	cfg := Config{
-		ServiceURL:    "http://localhost:9999",
+		ServiceURL:   "http://localhost:9999",
 		StateDir:     filepath.Join(tmpDir, ".state"),
 		WALDir:       walDir,
 		Once:         true,
@@ -312,7 +348,7 @@ func TestTrySend_LargeFrame(t *testing.T) {
 	defer ts.Close()
 
 	cfg := Config{
-		ServiceURL:     ts.URL,
+		ServiceURL:    ts.URL,
 		MaxBatchBytes: 100, // Small limit
 	}
 
@@ -352,7 +388,7 @@ func TestTrySend_BatchOverflow(t *testing.T) {
 	defer ts.Close()
 
 	cfg := Config{
-		ServiceURL:     ts.URL,
+		ServiceURL:    ts.URL,
 		MaxBatchBytes: 100,
 	}
 
@@ -390,8 +426,8 @@ func TestTrySend_URLConstruction(t *testing.T) {
 
 	cfg := Config{
 		ServiceURL: ts.URL, // Base URL only, no /v1/ingest/wal-frames
-		ChainID:   "test-chain",
-		NodeID:    "test-node",
+		ChainID:    "test-chain",
+		NodeID:     "test-node",
 	}
 
 	batch := []batchFrame{

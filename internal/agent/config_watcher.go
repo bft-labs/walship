@@ -50,13 +50,13 @@ func (w *ConfigWatcher) Run(ctx context.Context) {
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "config watcher: failed to create watcher: %v\n", err)
+		logger.Error().Err(err).Msg("config watcher: failed to create watcher")
 		return
 	}
 	defer watcher.Close()
 
 	if err := watcher.Add(configDir); err != nil {
-		fmt.Fprintf(os.Stderr, "config watcher: failed to watch %s: %v\n", configDir, err)
+		logger.Error().Err(err).Str("dir", configDir).Msg("config watcher: failed to watch")
 		w.sendConfigWithRetry(ctx)
 		return
 	}
@@ -85,7 +85,7 @@ func (w *ConfigWatcher) Run(ctx context.Context) {
 			if !ok {
 				return
 			}
-			fmt.Fprintf(os.Stderr, "config watcher: error: %v\n", err)
+			logger.Error().Err(err).Msg("config watcher: watcher error")
 		}
 	}
 }
@@ -103,7 +103,7 @@ func (w *ConfigWatcher) debounceSend(ctx context.Context, delay time.Duration) {
 	})
 }
 
-func (w *ConfigWatcher) configDir() string      { return filepath.Join(w.cfg.NodeHome, "config") }
+func (w *ConfigWatcher) configDir() string       { return filepath.Join(w.cfg.NodeHome, "config") }
 func (w *ConfigWatcher) appConfigPath() string   { return filepath.Join(w.configDir(), "app.toml") }
 func (w *ConfigWatcher) cometConfigPath() string { return filepath.Join(w.configDir(), "config.toml") }
 func (w *ConfigWatcher) configURL() string       { return w.cfg.ServiceURL + configEndpoint }
@@ -139,11 +139,11 @@ func (w *ConfigWatcher) sendConfig(ctx context.Context) {
 	buf, contentType := w.buildMultipartPayload()
 
 	if err := w.send(ctx, buf, contentType); err != nil {
-		fmt.Fprintf(os.Stderr, "config watcher: send error: %v\n", err)
+		logger.Error().Err(err).Msg("config watcher: send error")
 		return
 	}
 
-	fmt.Fprintf(os.Stderr, "config watcher: sent configuration update\n")
+	logger.Info().Msg("config watcher: sent configuration update")
 }
 
 // sendConfigWithRetry retries until success or context cancellation.
@@ -160,20 +160,20 @@ func (w *ConfigWatcher) sendConfigWithRetry(ctx context.Context) {
 
 		if err := w.send(ctx, reader, contentType); err == nil {
 			if retryCount > 0 {
-				fmt.Fprintf(os.Stderr, "config watcher: sent configuration update (succeeded after %d retries)\n", retryCount)
+				logger.Info().Int("retries", retryCount).Msg("config watcher: sent configuration update after retries")
 			} else {
-				fmt.Fprintf(os.Stderr, "config watcher: sent configuration update\n")
+				logger.Info().Msg("config watcher: sent configuration update")
 			}
 			return
 		}
 
 		// Failure - log and retry
 		retryCount++
-		fmt.Fprintf(os.Stderr, "config watcher: send failed (retry %d), retrying in %v\n", retryCount, retryInterval)
+		logger.Error().Int("retry", retryCount).Dur("retry_in", retryInterval).Msg("config watcher: send failed")
 
 		select {
 		case <-ctx.Done():
-			fmt.Fprintf(os.Stderr, "config watcher: stopping retry due to context cancellation\n")
+			logger.Info().Msg("config watcher: stopping retry due to context cancellation")
 			return
 		case <-time.After(retryInterval):
 			// Continue to next retry
