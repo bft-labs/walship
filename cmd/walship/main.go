@@ -9,6 +9,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 	pflag "github.com/spf13/pflag"
@@ -16,6 +17,8 @@ import (
 	agent "github.com/bft-labs/walship/internal/agent"
 	logAdapter "github.com/bft-labs/walship/internal/adapters/log"
 	"github.com/bft-labs/walship/pkg/walship"
+	"github.com/bft-labs/walship/plugins/configwatcher"
+	"github.com/bft-labs/walship/plugins/walcleanup"
 )
 
 const helpBanner = `
@@ -113,25 +116,39 @@ func main() {
 
 			// Convert agent.Config to walship.Config
 			libCfg := walship.Config{
-				WALDir:        cfg.WALDir,
-				StateDir:      cfg.StateDir,
-				ServiceURL:    cfg.ServiceURL,
-				AuthKey:       cfg.AuthKey,
-				ChainID:       cfg.ChainID,
-				NodeID:        cfg.NodeID,
-				PollInterval:  cfg.PollInterval,
-				SendInterval:  cfg.SendInterval,
-				HardInterval:  cfg.HardInterval,
-				MaxBatchBytes: cfg.MaxBatchBytes,
-				HTTPTimeout:   cfg.HTTPTimeout,
-				Once:          cfg.Once,
+				NodeHome:       cfg.NodeHome,
+				WALDir:         cfg.WALDir,
+				StateDir:       cfg.StateDir,
+				ServiceURL:     cfg.ServiceURL,
+				AuthKey:        cfg.AuthKey,
+				ChainID:        cfg.ChainID,
+				NodeID:         cfg.NodeID,
+				PollInterval:   cfg.PollInterval,
+				SendInterval:   cfg.SendInterval,
+				HardInterval:   cfg.HardInterval,
+				MaxBatchBytes:  cfg.MaxBatchBytes,
+				HTTPTimeout:    cfg.HTTPTimeout,
+				CPUThreshold:   cfg.CPUThreshold,
+				NetThreshold:   cfg.NetThreshold,
+				Iface:          cfg.Iface,
+				IfaceSpeedMbps: cfg.IfaceSpeedMbps,
+				Verify:         cfg.Verify,
+				Meta:           cfg.Meta,
+				Once:           cfg.Once,
 			}
 
 			// Create zerolog adapter for the library
 			zerologAdapter := logAdapter.NewZerologAdapterWithLogger(log)
 
-			// Create walship instance
-			w, err := walship.New(libCfg, walship.WithLogger(zerologAdapter))
+			// Create walship instance with plugins enabled by default
+			// This maintains backward compatibility with main branch behavior
+			w, err := walship.New(libCfg,
+				walship.WithLogger(zerologAdapter),
+				// Enable config watcher (was automatic in main branch)
+				configwatcher.WithConfigWatcher(configwatcher.DefaultConfig()),
+				// Enable WAL cleanup (was automatic in main branch)
+				walcleanup.WithWALCleanup(walcleanup.DefaultConfig()),
+			)
 			if err != nil {
 				return fmt.Errorf("create walship: %w", err)
 			}
@@ -148,34 +165,40 @@ func main() {
 				return fmt.Errorf("start walship: %w", err)
 			}
 
-			// Wait for signal or completion (in once mode)
-			if cfg.Once {
-				// In once mode, wait for completion by polling status
-				for w.Status() == walship.StateRunning || w.Status() == walship.StateStarting {
+			// Create done channel to detect completion
+			doneCh := make(chan struct{})
+			go func() {
+				// Poll for completion (for once mode)
+				ticker := time.NewTicker(100 * time.Millisecond)
+				defer ticker.Stop()
+				for {
 					select {
-					case <-sigCh:
-						log.Info().Msg("received signal, stopping...")
-						if err := w.Stop(); err != nil {
-							return fmt.Errorf("stop walship: %w", err)
-						}
-						return nil
-					default:
-						// Check status periodically
-						// Small sleep to avoid busy waiting
-						select {
-						case <-ctx.Done():
-							return nil
-						default:
+					case <-ctx.Done():
+						return
+					case <-ticker.C:
+						status := w.Status()
+						if status == walship.StateStopped || status == walship.StateCrashed {
+							close(doneCh)
+							return
 						}
 					}
 				}
-			} else {
-				// In continuous mode, wait for signal
-				<-sigCh
+			}()
+
+			// Wait for signal or completion
+			select {
+			case <-sigCh:
 				log.Info().Msg("received signal, stopping...")
-				if err := w.Stop(); err != nil {
-					return fmt.Errorf("stop walship: %w", err)
+			case <-doneCh:
+				// Completed (once mode or crash)
+				if w.Status() == walship.StateCrashed {
+					log.Error().Msg("walship crashed")
 				}
+			}
+
+			// Graceful shutdown
+			if err := w.Stop(); err != nil {
+				return fmt.Errorf("stop walship: %w", err)
 			}
 			return nil
 		},
