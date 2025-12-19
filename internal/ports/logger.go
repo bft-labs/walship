@@ -44,6 +44,11 @@ func Uint64(key string, value uint64) Field {
 	return Field{Key: key, Value: value}
 }
 
+// Uint32 creates a uint32 field.
+func Uint32(key string, value uint32) Field {
+	return Field{Key: key, Value: value}
+}
+
 // Float64 creates a float64 field.
 func Float64(key string, value float64) Field {
 	return Field{Key: key, Value: value}

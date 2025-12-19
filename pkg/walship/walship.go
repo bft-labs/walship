@@ -96,6 +96,8 @@ func New(cfg Config, opts ...Option) (*Walship, error) {
 		HardInterval:  cfg.HardInterval,
 		MaxBatchBytes: cfg.MaxBatchBytes,
 		Once:          cfg.Once,
+		Verify:        cfg.Verify,
+		Meta:          cfg.Meta,
 		ChainID:       cfg.ChainID,
 		NodeID:        cfg.NodeID,
 		Hostname:      hostname(),
