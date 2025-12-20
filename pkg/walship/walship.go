@@ -39,6 +39,9 @@ type Walship struct {
 	// Cleanup runner (config-based, not a plugin)
 	cleanup *cleanupRunner
 
+	// Resource gate (config-based, not a plugin)
+	resourceGate *resourceGate
+
 	mu     sync.RWMutex
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -107,8 +110,14 @@ func New(cfg Config, opts ...Option) (*Walship, error) {
 		ServiceURL:    cfg.ServiceURL,
 	}
 
-	// Create agent
-	agent := app.NewAgent(agentCfg, reader, sender, stateRepo, logger, &emitter)
+	// Create resource gate if configured
+	var resGate *resourceGate
+	if o.resourceGatingConfig != nil && o.resourceGatingConfig.Enabled {
+		resGate = newResourceGate(*o.resourceGatingConfig, logger)
+	}
+
+	// Create agent (pass resource gate for backpressure)
+	agent := app.NewAgent(agentCfg, reader, sender, stateRepo, logger, &emitter, resGate)
 
 	// Create cleanup runner if configured
 	var cleanup *cleanupRunner
@@ -117,16 +126,17 @@ func New(cfg Config, opts ...Option) (*Walship, error) {
 	}
 
 	return &Walship{
-		config:    cfg,
-		opts:      o,
-		lifecycle: lifecycle,
-		agent:     agent,
-		reader:    reader,
-		sender:    sender,
-		stateRepo: stateRepo,
-		logger:    logger,
-		plugins:   o.plugins,
-		cleanup:   cleanup,
+		config:       cfg,
+		opts:         o,
+		lifecycle:    lifecycle,
+		agent:        agent,
+		reader:       reader,
+		sender:       sender,
+		stateRepo:    stateRepo,
+		logger:       logger,
+		plugins:      o.plugins,
+		cleanup:      cleanup,
+		resourceGate: resGate,
 	}, nil
 }
 
@@ -179,6 +189,11 @@ func (w *Walship) Start(ctx context.Context) error {
 	// Start cleanup runner if configured
 	if w.cleanup != nil {
 		w.cleanup.start(runCtx)
+	}
+
+	// Log resource gating status
+	if w.resourceGate != nil {
+		w.logger.Info("resource gating enabled")
 	}
 
 	// Start the agent in a goroutine

@@ -13,7 +13,6 @@ import (
 
 	"github.com/bft-labs/walship/pkg/walship"
 	"github.com/bft-labs/walship/plugins/configwatcher"
-	"github.com/bft-labs/walship/plugins/resourcegating"
 )
 
 // =============================================================================
@@ -585,12 +584,15 @@ func TestPlugin_ResourceGatingIntegration(t *testing.T) {
 	cfg := createTestConfig(t)
 	logger := newTestLogger()
 
-	rgConfig := resourcegating.DefaultConfig()
-	rgConfig.CPUThreshold = 0.90
+	rgConfig := walship.ResourceGatingConfig{
+		Enabled:      true,
+		CPUThreshold: 0.90,
+		NetThreshold: 0.70,
+	}
 
 	w, err := walship.New(cfg,
 		walship.WithLogger(logger),
-		resourcegating.WithResourceGating(rgConfig),
+		walship.WithResourceGatingConfig(rgConfig),
 	)
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
@@ -603,17 +605,17 @@ func TestPlugin_ResourceGatingIntegration(t *testing.T) {
 
 	time.Sleep(200 * time.Millisecond)
 
-	// Check that plugin logged initialization
+	// Check that resource gating logged initialization
 	messages := logger.Messages()
 	found := false
 	for _, msg := range messages {
-		if msg == "[INFO] resource gating plugin initialized" {
+		if msg == "[INFO] resource gating enabled" {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Error("Resource gating plugin should have logged initialization")
+		t.Error("Resource gating should have logged initialization")
 	}
 
 	if err := w.Stop(); err != nil {
@@ -734,10 +736,10 @@ func TestPlugin_MultipleBuiltinPlugins(t *testing.T) {
 
 	logger := newTestLogger()
 
-	// Use all built-in plugins together
+	// Use all built-in features together
 	w, err := walship.New(cfg,
 		walship.WithLogger(logger),
-		resourcegating.WithResourceGating(resourcegating.DefaultConfig()),
+		walship.WithResourceGatingConfig(walship.DefaultResourceGatingConfig()),
 		configwatcher.WithConfigWatcher(configwatcher.DefaultConfig()),
 		walship.WithCleanupConfig(walship.DefaultCleanupConfig()),
 	)
