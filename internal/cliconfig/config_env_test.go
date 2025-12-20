@@ -1,4 +1,4 @@
-package agent
+package cliconfig
 
 import (
 	"os"
@@ -134,7 +134,7 @@ func TestApplyEnvConfig(t *testing.T) {
 				NodeHome:       "/root",
 				NodeID:         "node",
 				WALDir:         "/wal",
-				ServiceURL:      "http://example.com",
+				ServiceURL:     "http://example.com",
 				AuthKey:        "secret",
 				PollInterval:   1 * time.Minute,
 				SendInterval:   2 * time.Minute,
@@ -232,7 +232,7 @@ func TestConfigPrecedence(t *testing.T) {
 	trueVal := true
 
 	// Setup file config
-	fileConf := fileConfig{
+	fileConf := FileConfig{
 		NodeHome: "/file/root",
 		NodeID:   "file-node",
 		Verify:   &trueVal,
@@ -258,8 +258,8 @@ func TestConfigPrecedence(t *testing.T) {
 	}
 
 	// Apply file config
-	if err := applyFileConfig(&cfg, fileConf, changed); err != nil {
-		t.Fatalf("applyFileConfig failed: %v", err)
+	if err := ApplyFileConfig(&cfg, fileConf, changed); err != nil {
+		t.Fatalf("ApplyFileConfig failed: %v", err)
 	}
 
 	// Apply env config

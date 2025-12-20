@@ -1,4 +1,4 @@
-package agent
+package cliconfig
 
 import (
 	"crypto/ed25519"
@@ -13,7 +13,7 @@ import (
 
 func TestLoadNodeInfo(t *testing.T) {
 	// Create temp dir for file-based tests
-	tmpDir, err := os.MkdirTemp("", "agent-test")
+	tmpDir, err := os.MkdirTemp("", "cliconfig-test")
 	if err != nil {
 		t.Fatal(err)
 	}

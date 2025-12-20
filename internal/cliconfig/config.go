@@ -1,4 +1,4 @@
-package agent
+package cliconfig
 
 import (
 	"fmt"
@@ -10,19 +10,7 @@ import (
 // DefaultServiceURL is the default endpoint for shipping WAL data.
 const DefaultServiceURL = "https://api.apphash.io"
 
-// FrameMeta matches tools/memlogger/writer.go schema for index lines.
-// Fields are used to locate and read gzip members from the .gz file.
-type FrameMeta struct {
-	File    string `json:"file"`
-	Frame   uint64 `json:"frame"`
-	Off     uint64 `json:"off"`
-	Len     uint64 `json:"len"`
-	Recs    uint32 `json:"recs"`
-	FirstTS int64  `json:"first_ts"`
-	LastTS  int64  `json:"last_ts"`
-	CRC32   uint32 `json:"crc32"`
-}
-
+// Config holds CLI configuration for walship.
 type Config struct {
 	NodeHome string
 	NodeID   string
@@ -62,14 +50,9 @@ func DefaultConfig() Config {
 		NetThreshold:   0.70,
 		IfaceSpeedMbps: 1000,
 		MaxBatchBytes:  4 << 20, // 4MB
-		StateDir:       defaultStateDir(),
+		StateDir:       "",      // Derived from WALDir during Validate
 		AuthKey:        os.Getenv("WALSHIP_AUTH_KEY"),
 	}
-}
-
-func defaultStateDir() string {
-	// Derived from WALDir during Validate when left empty.
-	return ""
 }
 
 // Validate checks the configuration for errors and sets derived defaults.

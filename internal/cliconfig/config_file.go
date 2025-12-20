@@ -1,4 +1,4 @@
-package agent
+package cliconfig
 
 import (
 	"os"
@@ -7,13 +7,13 @@ import (
 	toml "github.com/pelletier/go-toml/v2"
 )
 
-// fileConfig mirrors Config but uses strings for durations to make TOML friendly.
-type fileConfig struct {
+// FileConfig mirrors Config but uses strings for durations to make TOML friendly.
+type FileConfig struct {
 	NodeHome       string  `toml:"node_home"`
 	NodeID         string  `toml:"node_id"`
 	WALDir         string  `toml:"wal_dir"`
 	ServiceURL     string  `toml:"service_url"`
-	AuthKey         string  `toml:"auth_key"`
+	AuthKey        string  `toml:"auth_key"`
 	PollInterval   string  `toml:"poll_interval"`
 	SendInterval   string  `toml:"send_interval"`
 	HardInterval   string  `toml:"hard_interval"`
@@ -29,9 +29,9 @@ type fileConfig struct {
 	Once           *bool   `toml:"once"`
 }
 
-// loadFileConfig reads and parses a TOML config file.
-func loadFileConfig(path string) (fileConfig, error) {
-	var fc fileConfig
+// LoadFileConfig reads and parses a TOML config file from the given path.
+func LoadFileConfig(path string) (FileConfig, error) {
+	var fc FileConfig
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return fc, err
@@ -42,18 +42,18 @@ func loadFileConfig(path string) (fileConfig, error) {
 	return fc, nil
 }
 
-// defaultConfigPath returns the default configuration file path.
+// DefaultConfigPath returns the default configuration file path.
 // Returns ~/.walship/config.toml if user home directory is accessible.
-func defaultConfigPath() string {
+func DefaultConfigPath() string {
 	if h, err := os.UserHomeDir(); err == nil {
 		return filepath.Join(h, ".walship", "config.toml")
 	}
 	return ""
 }
 
-// applyFileConfig applies configuration from a file to the Config struct.
+// ApplyFileConfig applies configuration from a file to the Config struct.
 // It respects flags that have been explicitly set (changed map).
-func applyFileConfig(cfg *Config, fc fileConfig, changed map[string]bool) error {
+func ApplyFileConfig(cfg *Config, fc FileConfig, changed map[string]bool) error {
 	s := newConfigSetter(changed)
 
 	s.setString("node-home", fc.NodeHome, &cfg.NodeHome)
@@ -90,31 +90,8 @@ func applyFileConfig(cfg *Config, fc fileConfig, changed map[string]bool) error 
 	return nil
 }
 
-// fileExists checks if a file exists at the given path.
-func fileExists(p string) bool {
-	_, err := os.Stat(p)
-	return err == nil
-}
-
-// Exported functions for use from main package without exposing internal helpers.
-
-// LoadFileConfig reads and parses a TOML config file from the given path.
-func LoadFileConfig(path string) (fileConfig, error) {
-	return loadFileConfig(path)
-}
-
-// DefaultConfigPath returns the default configuration file path.
-func DefaultConfigPath() string {
-	return defaultConfigPath()
-}
-
-// ApplyFileConfig applies configuration from a file to the Config struct.
-// It respects flags that have been explicitly set (changed map).
-func ApplyFileConfig(cfg *Config, fc fileConfig, changed map[string]bool) error {
-	return applyFileConfig(cfg, fc, changed)
-}
-
 // FileExists checks if a file exists at the given path.
 func FileExists(p string) bool {
-	return fileExists(p)
+	_, err := os.Stat(p)
+	return err == nil
 }

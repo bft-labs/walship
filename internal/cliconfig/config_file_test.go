@@ -1,8 +1,9 @@
-package agent
+package cliconfig
 
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -13,7 +14,7 @@ func TestApplyFileConfig(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		fileConfig fileConfig
+		fileConfig FileConfig
 		changed    map[string]bool
 		initial    Config
 		expected   Config
@@ -21,7 +22,7 @@ func TestApplyFileConfig(t *testing.T) {
 	}{
 		{
 			name: "applies all valid config values",
-			fileConfig: fileConfig{
+			fileConfig: FileConfig{
 				NodeHome:       "/test/root",
 				NodeID:         "node-1",
 				PollInterval:   "5m",
@@ -43,7 +44,7 @@ func TestApplyFileConfig(t *testing.T) {
 		},
 		{
 			name: "respects changed flags",
-			fileConfig: fileConfig{
+			fileConfig: FileConfig{
 				NodeHome: "/config/node_home",
 				NodeID:   "config-node",
 			},
@@ -60,11 +61,11 @@ func TestApplyFileConfig(t *testing.T) {
 		},
 		{
 			name: "handles all field types correctly",
-			fileConfig: fileConfig{
+			fileConfig: FileConfig{
 				NodeHome:       "/tmp/root",
 				NodeID:         "node1",
 				WALDir:         "/tmp/custom_wal",
-				ServiceURL:      "http://example.com",
+				ServiceURL:     "http://example.com",
 				AuthKey:        "secret",
 				PollInterval:   "1m",
 				SendInterval:   "2m",
@@ -86,7 +87,7 @@ func TestApplyFileConfig(t *testing.T) {
 				NodeHome:       "/tmp/root",
 				NodeID:         "node1",
 				WALDir:         "/tmp/custom_wal",
-				ServiceURL:      "http://example.com",
+				ServiceURL:     "http://example.com",
 				AuthKey:        "secret",
 				PollInterval:   1 * time.Minute,
 				SendInterval:   2 * time.Minute,
@@ -109,14 +110,14 @@ func TestApplyFileConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := tt.initial
-			err := applyFileConfig(&cfg, tt.fileConfig, tt.changed)
+			err := ApplyFileConfig(&cfg, tt.fileConfig, tt.changed)
 
 			if tt.wantErr && err == nil {
-				t.Error("applyFileConfig() expected error but got nil")
+				t.Error("ApplyFileConfig() expected error but got nil")
 				return
 			}
 			if !tt.wantErr && err != nil {
-				t.Errorf("applyFileConfig() unexpected error: %v", err)
+				t.Errorf("ApplyFileConfig() unexpected error: %v", err)
 				return
 			}
 
@@ -183,9 +184,9 @@ verify = true
 		t.Fatalf("Failed to create test config file: %v", err)
 	}
 
-	fc, err := loadFileConfig(configPath)
+	fc, err := LoadFileConfig(configPath)
 	if err != nil {
-		t.Fatalf("loadFileConfig() error = %v", err)
+		t.Fatalf("LoadFileConfig() error = %v", err)
 	}
 
 	if fc.NodeHome != "/tmp/root" {
@@ -209,9 +210,9 @@ verify = true
 }
 
 func TestLoadFileConfig_InvalidFile(t *testing.T) {
-	_, err := loadFileConfig("/nonexistent/path/config.toml")
+	_, err := LoadFileConfig("/nonexistent/path/config.toml")
 	if err == nil {
-		t.Error("loadFileConfig() expected error for nonexistent file")
+		t.Error("LoadFileConfig() expected error for nonexistent file")
 	}
 }
 
@@ -228,18 +229,18 @@ this is not valid toml
 		t.Fatalf("Failed to create test config file: %v", err)
 	}
 
-	_, err := loadFileConfig(configPath)
+	_, err := LoadFileConfig(configPath)
 	if err == nil {
-		t.Error("loadFileConfig() expected error for invalid TOML")
+		t.Error("LoadFileConfig() expected error for invalid TOML")
 	}
 }
 
 func TestDefaultConfigPath(t *testing.T) {
-	path := defaultConfigPath()
+	path := DefaultConfigPath()
 
 	// Should return a path containing .walship
-	if path != "" && !contains(path, ".walship") {
-		t.Errorf("defaultConfigPath() = %v, should contain .walship", path)
+	if path != "" && !strings.Contains(path, ".walship") {
+		t.Errorf("DefaultConfigPath() = %v, should contain .walship", path)
 	}
 }
 
@@ -251,27 +252,11 @@ func TestFileExists(t *testing.T) {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
 
-	if !fileExists(existingFile) {
-		t.Error("fileExists() = false, want true for existing file")
+	if !FileExists(existingFile) {
+		t.Error("FileExists() = false, want true for existing file")
 	}
 
-	if fileExists(filepath.Join(tmpDir, "nonexistent.txt")) {
-		t.Error("fileExists() = true, want false for nonexistent file")
+	if FileExists(filepath.Join(tmpDir, "nonexistent.txt")) {
+		t.Error("FileExists() = true, want false for nonexistent file")
 	}
-}
-
-// Helper function
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) &&
-		(s[:len(substr)] == substr || s[len(s)-len(substr):] == substr ||
-			containsSubstring(s, substr)))
-}
-
-func containsSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

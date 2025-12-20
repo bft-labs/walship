@@ -14,8 +14,8 @@ import (
 	"github.com/spf13/cobra"
 	pflag "github.com/spf13/pflag"
 
-	agent "github.com/bft-labs/walship/internal/agent"
 	logAdapter "github.com/bft-labs/walship/internal/adapters/log"
+	"github.com/bft-labs/walship/internal/cliconfig"
 	"github.com/bft-labs/walship/pkg/walship"
 	"github.com/bft-labs/walship/plugins/configwatcher"
 )
@@ -59,10 +59,10 @@ func getVersion() string {
 }
 
 func main() {
-	cfg := agent.DefaultConfig()
+	cfg := cliconfig.DefaultConfig()
 	var cfgPath string
 
-	log := agent.Logger()
+	log := cliconfig.Logger()
 
 	root := &cobra.Command{
 		Use:     "walship",
@@ -75,29 +75,29 @@ func main() {
 			// Determine config path
 			cfgFile := cfgPath
 			if cfgFile == "" {
-				cfgFile = agent.DefaultConfigPath()
+				cfgFile = cliconfig.DefaultConfigPath()
 			}
 
 			// Build set of changed flags
 			changed := map[string]bool{}
 			cmd.Flags().Visit(func(f *pflag.Flag) { changed[f.Name] = true })
 
-			if cfgFile != "" && agent.FileExists(cfgFile) {
-				fc, err := agent.LoadFileConfig(cfgFile)
+			if cfgFile != "" && cliconfig.FileExists(cfgFile) {
+				fc, err := cliconfig.LoadFileConfig(cfgFile)
 				if err != nil {
 					return fmt.Errorf("load config: %w", err)
 				}
-				if err := agent.ApplyFileConfig(&cfg, fc, changed); err != nil {
+				if err := cliconfig.ApplyFileConfig(&cfg, fc, changed); err != nil {
 					return err
 				}
 			}
 
 			// Apply environment variables (WALSHIP_*)
 			// These override file config but are overridden by flags (checked via changed map)
-			agent.ApplyEnvConfig(&cfg, changed)
+			cliconfig.ApplyEnvConfig(&cfg, changed)
 
 			// Load node info (ChainID, NodeID) from files if needed
-			if err := agent.LoadNodeInfo(&cfg); err != nil {
+			if err := cliconfig.LoadNodeInfo(&cfg); err != nil {
 				return err
 			}
 
@@ -147,6 +147,14 @@ func main() {
 				configwatcher.WithConfigWatcher(configwatcher.DefaultConfig()),
 				// Enable WAL cleanup (config-based, not a plugin)
 				walship.WithCleanupConfig(walship.DefaultCleanupConfig()),
+				// Enable resource gating (core feature, protects node performance)
+				walship.WithResourceGatingConfig(walship.ResourceGatingConfig{
+					Enabled:        true,
+					CPUThreshold:   cfg.CPUThreshold,
+					NetThreshold:   cfg.NetThreshold,
+					Iface:          cfg.Iface,
+					IfaceSpeedMbps: cfg.IfaceSpeedMbps,
+				}),
 			)
 			if err != nil {
 				return fmt.Errorf("create walship: %w", err)
@@ -208,7 +216,7 @@ func main() {
 	root.Flags().StringVar(&cfg.NodeHome, "node-home", "", "application home directory")
 	root.Flags().StringVar(&cfg.WALDir, "wal-dir", cfg.WALDir, "WAL directory containing .idx/.gz pairs")
 
-	root.Flags().StringVar(&cfg.ServiceURL, "service-url", cfg.ServiceURL, fmt.Sprintf("base service URL (defaults to %s; override only for internal testing)", agent.DefaultServiceURL))
+	root.Flags().StringVar(&cfg.ServiceURL, "service-url", cfg.ServiceURL, fmt.Sprintf("base service URL (defaults to %s; override only for internal testing)", cliconfig.DefaultServiceURL))
 	if err := root.Flags().MarkHidden("service-url"); err != nil {
 		log.Info().Err(err).Msg("failed to hide service-url flag")
 	}

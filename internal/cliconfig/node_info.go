@@ -1,4 +1,4 @@
-package agent
+package cliconfig
 
 import (
 	"crypto/ed25519"
