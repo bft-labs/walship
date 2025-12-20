@@ -38,13 +38,14 @@ type AgentConfig struct {
 
 // Agent orchestrates the WAL streaming loop.
 type Agent struct {
-	config    AgentConfig
-	reader    ports.FrameReader
-	sender    ports.FrameSender
-	stateRepo ports.StateRepository
-	logger    ports.Logger
-	batcher   *Batcher
-	emitter   SendEventEmitter
+	config       AgentConfig
+	reader       ports.FrameReader
+	sender       ports.FrameSender
+	stateRepo    ports.StateRepository
+	logger       ports.Logger
+	batcher      *Batcher
+	emitter      SendEventEmitter
+	resourceGate ports.ResourceGate
 }
 
 // SendEventEmitter is called on send success or failure.
@@ -61,15 +62,17 @@ func NewAgent(
 	stateRepo ports.StateRepository,
 	logger ports.Logger,
 	emitter SendEventEmitter,
+	resourceGate ports.ResourceGate,
 ) *Agent {
 	return &Agent{
-		config:    config,
-		reader:    reader,
-		sender:    snd,
-		stateRepo: stateRepo,
-		logger:    logger,
-		batcher:   NewBatcher(config.MaxBatchBytes, config.SendInterval, config.HardInterval),
-		emitter:   emitter,
+		config:       config,
+		reader:       reader,
+		sender:       snd,
+		stateRepo:    stateRepo,
+		logger:       logger,
+		batcher:      NewBatcher(config.MaxBatchBytes, config.SendInterval, config.HardInterval),
+		emitter:      emitter,
+		resourceGate: resourceGate,
 	}
 }
 
@@ -159,6 +162,11 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		// Check if we should send
 		if shouldSend || a.batcher.ShouldSend() {
+			// Resource gating: delay if system is busy, unless hard interval exceeded
+			if a.resourceGate != nil && !a.batcher.ShouldForceSend() && !a.resourceGate.OK() {
+				a.logger.Debug("resource gate: delaying send due to high system load")
+				continue
+			}
 			a.trySend(ctx, &state, backoff)
 		}
 	}
