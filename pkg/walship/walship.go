@@ -15,8 +15,6 @@ import (
 	"github.com/bft-labs/walship/internal/app"
 	"github.com/bft-labs/walship/internal/domain"
 	"github.com/bft-labs/walship/internal/ports"
-	"github.com/bft-labs/walship/pkg/batch"
-	"github.com/bft-labs/walship/pkg/lifecycle"
 	"github.com/bft-labs/walship/pkg/log"
 	"github.com/bft-labs/walship/pkg/sender"
 	"github.com/bft-labs/walship/pkg/state"
@@ -37,6 +35,9 @@ type Walship struct {
 
 	// Plugin support
 	plugins []Plugin
+
+	// Cleanup runner (config-based, not a plugin)
+	cleanup *cleanupRunner
 
 	mu     sync.RWMutex
 	ctx    context.Context
@@ -109,6 +110,12 @@ func New(cfg Config, opts ...Option) (*Walship, error) {
 	// Create agent
 	agent := app.NewAgent(agentCfg, reader, sender, stateRepo, logger, &emitter)
 
+	// Create cleanup runner if configured
+	var cleanup *cleanupRunner
+	if o.cleanupConfig != nil && o.cleanupConfig.Enabled {
+		cleanup = newCleanupRunner(*o.cleanupConfig, cfg.WALDir, cfg.StateDir, logger)
+	}
+
 	return &Walship{
 		config:    cfg,
 		opts:      o,
@@ -119,6 +126,7 @@ func New(cfg Config, opts ...Option) (*Walship, error) {
 		stateRepo: stateRepo,
 		logger:    logger,
 		plugins:   o.plugins,
+		cleanup:   cleanup,
 	}, nil
 }
 
@@ -166,6 +174,11 @@ func (w *Walship) Start(ctx context.Context) error {
 			return err
 		}
 		w.logger.Info("plugin initialized", ports.String("plugin", p.Name()))
+	}
+
+	// Start cleanup runner if configured
+	if w.cleanup != nil {
+		w.cleanup.start(runCtx)
 	}
 
 	// Start the agent in a goroutine
@@ -219,6 +232,11 @@ func (w *Walship) Stop() error {
 
 	// Wait for workers with timeout
 	err := w.lifecycle.WaitWithTimeout(app.ShutdownTimeout)
+
+	// Stop cleanup runner
+	if w.cleanup != nil {
+		w.cleanup.stop()
+	}
 
 	// Shutdown plugins (in reverse order)
 	shutdownCtx := context.Background()
@@ -334,12 +352,10 @@ func validateModuleVersions() error {
 		version    string
 		minVersion string
 	}{
-		"wal":       {wal.Version, wal.MinCompatibleVersion},
-		"batch":     {batch.Version, batch.MinCompatibleVersion},
-		"sender":    {sender.Version, sender.MinCompatibleVersion},
-		"state":     {state.Version, state.MinCompatibleVersion},
-		"log":       {log.Version, log.MinCompatibleVersion},
-		"lifecycle": {lifecycle.Version, lifecycle.MinCompatibleVersion},
+		"wal":    {wal.Version, wal.MinCompatibleVersion},
+		"sender": {sender.Version, sender.MinCompatibleVersion},
+		"state":  {state.Version, state.MinCompatibleVersion},
+		"log":    {log.Version, log.MinCompatibleVersion},
 	}
 
 	for name, m := range modules {

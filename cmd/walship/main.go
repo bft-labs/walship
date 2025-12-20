@@ -18,7 +18,6 @@ import (
 	logAdapter "github.com/bft-labs/walship/internal/adapters/log"
 	"github.com/bft-labs/walship/pkg/walship"
 	"github.com/bft-labs/walship/plugins/configwatcher"
-	"github.com/bft-labs/walship/plugins/walcleanup"
 )
 
 const helpBanner = `
@@ -140,14 +139,14 @@ func main() {
 			// Create zerolog adapter for the library
 			zerologAdapter := logAdapter.NewZerologAdapterWithLogger(log)
 
-			// Create walship instance with plugins enabled by default
+			// Create walship instance with features enabled by default
 			// This maintains backward compatibility with main branch behavior
 			w, err := walship.New(libCfg,
 				walship.WithLogger(zerologAdapter),
-				// Enable config watcher (was automatic in main branch)
+				// Enable config watcher plugin
 				configwatcher.WithConfigWatcher(configwatcher.DefaultConfig()),
-				// Enable WAL cleanup (was automatic in main branch)
-				walcleanup.WithWALCleanup(walcleanup.DefaultConfig()),
+				// Enable WAL cleanup (config-based, not a plugin)
+				walship.WithCleanupConfig(walship.DefaultCleanupConfig()),
 			)
 			if err != nil {
 				return fmt.Errorf("create walship: %w", err)

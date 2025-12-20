@@ -42,10 +42,11 @@ type Option func(*options)
 
 // options holds the optional configuration for a Walship instance.
 type options struct {
-	httpClient   ports.HTTPClient
-	logger       ports.Logger
-	eventHandler EventHandler
-	plugins      []Plugin
+	httpClient    ports.HTTPClient
+	logger        ports.Logger
+	eventHandler  EventHandler
+	plugins       []Plugin
+	cleanupConfig *CleanupConfig
 }
 
 // defaultOptions returns options with sensible defaults.

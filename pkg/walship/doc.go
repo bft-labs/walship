@@ -62,18 +62,17 @@
 // [StateRunning], [StateStopping], or [StateCrashed]. Use [Walship.Status] to
 // query the current state.
 //
-// # Plugins
+// # Plugins and Cleanup
 //
 // Walship supports optional plugins for extended functionality:
 //
 //	import "github.com/bft-labs/walship/plugins/resourcegating"
-//	import "github.com/bft-labs/walship/plugins/walcleanup"
 //	import "github.com/bft-labs/walship/plugins/configwatcher"
 //
 //	agent, err := walship.New(cfg,
 //	    resourcegating.WithResourceGating(resourcegating.DefaultConfig()),
-//	    walcleanup.WithWALCleanup(walcleanup.DefaultConfig()),
 //	    configwatcher.WithConfigWatcher(configwatcher.DefaultConfig()),
+//	    walship.WithCleanupConfig(walship.DefaultCleanupConfig()),
 //	)
 //
 // # Version

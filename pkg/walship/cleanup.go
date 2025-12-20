@@ -1,13 +1,9 @@
-// Package walcleanup provides automatic WAL file cleanup for walship.
-// When enabled, it periodically removes old WAL segments to prevent
-// unbounded disk usage.
-package walcleanup
+package walship
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -17,59 +13,59 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bft-labs/walship/pkg/walship"
+	"github.com/bft-labs/walship/internal/ports"
 )
 
-// Plugin implements WAL cleanup functionality.
-// It periodically checks the WAL directory size and removes old segments
-// when it exceeds the high watermark.
-type Plugin struct {
-	mu sync.RWMutex
+// CleanupConfig holds configuration options for automatic WAL cleanup.
+// When enabled, walship periodically checks the WAL directory size and
+// removes old segments when it exceeds the high watermark.
+type CleanupConfig struct {
+	// Enabled controls whether cleanup is active. Default: false
+	Enabled bool
 
-	// Configuration
-	checkInterval time.Duration
-	highWatermark int64
-	lowWatermark  int64
-
-	// Runtime state
-	walDir   string
-	stateDir string
-	logger   walship.Logger
-	cancel   context.CancelFunc
-	wg       sync.WaitGroup
-}
-
-// Config holds configuration options for the WAL cleanup plugin.
-type Config struct {
 	// CheckInterval is how often to check the WAL directory size.
 	// Default: 72 hours
 	CheckInterval time.Duration
 
 	// HighWatermark is the size in bytes above which cleanup begins.
-	// Default: 2 GiB
+	// Default: 2 GiB (2147483648 bytes)
 	HighWatermark int64
 
 	// LowWatermark is the target size in bytes after cleanup.
-	// Default: 1.5 GiB
+	// Default: 1.5 GiB (1610612736 bytes)
 	LowWatermark int64
-
-	// RunImmediately if true, runs a cleanup check on startup.
-	// Default: true
-	RunImmediately bool
 }
 
-// DefaultConfig returns a Config with sensible defaults.
-func DefaultConfig() Config {
-	return Config{
-		CheckInterval:  72 * time.Hour,
-		HighWatermark:  2 << 30,  // 2 GiB
-		LowWatermark:   3 << 29,  // 1.5 GiB
-		RunImmediately: true,
+// DefaultCleanupConfig returns a CleanupConfig with sensible defaults.
+func DefaultCleanupConfig() CleanupConfig {
+	return CleanupConfig{
+		Enabled:       true,
+		CheckInterval: 72 * time.Hour,
+		HighWatermark: 2 << 30,  // 2 GiB
+		LowWatermark:  3 << 29,  // 1.5 GiB
 	}
 }
 
-// New creates a new WAL cleanup plugin with the given configuration.
-func New(cfg Config) *Plugin {
+// WithCleanupConfig enables automatic WAL cleanup with the specified configuration.
+// When enabled, walship periodically checks the WAL directory size and removes
+// old segments to prevent unbounded disk usage.
+//
+// Usage:
+//
+//	w, err := walship.New(cfg,
+//	    walship.WithCleanupConfig(walship.CleanupConfig{
+//	        Enabled:       true,
+//	        HighWatermark: 10 << 30, // 10GB
+//	        LowWatermark:  5 << 30,  // 5GB
+//	        CheckInterval: 1 * time.Hour,
+//	    }),
+//	)
+func WithCleanupConfig(cfg CleanupConfig) Option {
+	if !cfg.Enabled {
+		return func(o *options) {} // No-op if not enabled
+	}
+
+	// Apply defaults for zero values
 	if cfg.CheckInterval <= 0 {
 		cfg.CheckInterval = 72 * time.Hour
 	}
@@ -80,61 +76,68 @@ func New(cfg Config) *Plugin {
 		cfg.LowWatermark = 3 << 29
 	}
 
-	return &Plugin{
+	return func(o *options) {
+		o.cleanupConfig = &cfg
+	}
+}
+
+// cleanupRunner manages the WAL cleanup goroutine.
+type cleanupRunner struct {
+	mu sync.RWMutex
+
+	// Configuration
+	checkInterval time.Duration
+	highWatermark int64
+	lowWatermark  int64
+
+	// Runtime state
+	walDir   string
+	stateDir string
+	logger   ports.Logger
+	cancel   context.CancelFunc
+	wg       sync.WaitGroup
+}
+
+func newCleanupRunner(cfg CleanupConfig, walDir, stateDir string, logger ports.Logger) *cleanupRunner {
+	return &cleanupRunner{
 		checkInterval: cfg.CheckInterval,
 		highWatermark: cfg.HighWatermark,
 		lowWatermark:  cfg.LowWatermark,
+		walDir:        walDir,
+		stateDir:      stateDir,
+		logger:        logger,
 	}
 }
 
-// Name returns the plugin identifier.
-func (p *Plugin) Name() string {
-	return "walcleanup"
-}
-
-// Initialize sets up the plugin and starts the cleanup loop.
-func (p *Plugin) Initialize(ctx context.Context, cfg walship.PluginConfig) error {
-	p.mu.Lock()
-	p.walDir = cfg.WALDir
-	p.stateDir = cfg.StateDir
-	p.logger = cfg.Logger
-	p.mu.Unlock()
-
-	if p.walDir == "" {
-		p.logger.Warn("WAL cleanup disabled: no WAL directory configured")
-		return nil
+func (c *cleanupRunner) start(ctx context.Context) {
+	if c.walDir == "" {
+		c.logger.Warn("WAL cleanup disabled: no WAL directory configured")
+		return
 	}
 
-	// Create cancellable context for the cleanup loop
 	cleanupCtx, cancel := context.WithCancel(ctx)
-	p.cancel = cancel
+	c.cancel = cancel
 
-	p.logger.Info("WAL cleanup plugin initialized")
+	c.logger.Info("WAL cleanup enabled")
 
-	// Start cleanup loop
-	p.wg.Add(1)
-	go p.cleanupLoop(cleanupCtx)
-
-	return nil
+	c.wg.Add(1)
+	go c.cleanupLoop(cleanupCtx)
 }
 
-// Shutdown stops the cleanup loop.
-func (p *Plugin) Shutdown(ctx context.Context) error {
-	if p.cancel != nil {
-		p.cancel()
+func (c *cleanupRunner) stop() {
+	if c.cancel != nil {
+		c.cancel()
 	}
-	p.wg.Wait()
-	return nil
+	c.wg.Wait()
 }
 
-// cleanupLoop runs periodic cleanup checks.
-func (p *Plugin) cleanupLoop(ctx context.Context) {
-	defer p.wg.Done()
+func (c *cleanupRunner) cleanupLoop(ctx context.Context) {
+	defer c.wg.Done()
 
 	// Run immediately on startup
-	p.cleanupOnce(ctx)
+	c.cleanupOnce(ctx)
 
-	ticker := time.NewTicker(p.checkInterval)
+	ticker := time.NewTicker(c.checkInterval)
 	defer ticker.Stop()
 
 	for {
@@ -142,33 +145,32 @@ func (p *Plugin) cleanupLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			p.cleanupOnce(ctx)
+			c.cleanupOnce(ctx)
 		}
 	}
 }
 
-// cleanupOnce performs a single cleanup check.
-func (p *Plugin) cleanupOnce(ctx context.Context) {
-	p.mu.RLock()
-	walDir := p.walDir
-	stateDir := p.stateDir
-	p.mu.RUnlock()
+func (c *cleanupRunner) cleanupOnce(ctx context.Context) {
+	c.mu.RLock()
+	walDir := c.walDir
+	stateDir := c.stateDir
+	c.mu.RUnlock()
 
 	curSize, err := walDirSize(walDir)
 	if err != nil {
-		p.logger.Error("WAL cleanup: size check failed")
+		c.logger.Error("WAL cleanup: size check failed", ports.Err(err))
 		return
 	}
 
-	if curSize <= p.highWatermark {
+	if curSize <= c.highWatermark {
 		return
 	}
 
-	protectedDay := p.currentActiveDay(stateDir)
+	protectedDay := c.currentActiveDay(stateDir)
 
 	segs, err := orderedSegments(walDir, protectedDay)
 	if err != nil {
-		p.logger.Error("WAL cleanup: list segments failed")
+		c.logger.Error("WAL cleanup: list segments failed", ports.Err(err))
 		return
 	}
 	if len(segs) == 0 {
@@ -180,13 +182,13 @@ func (p *Plugin) cleanupOnce(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		if curSize <= p.lowWatermark {
+		if curSize <= c.lowWatermark {
 			break
 		}
 
 		bytesFreed, rmErr := removeSegment(seg)
 		if rmErr != nil {
-			p.logger.Error("WAL cleanup: remove failed")
+			c.logger.Error("WAL cleanup: remove failed", ports.Err(rmErr))
 			continue
 		}
 		curSize -= bytesFreed
@@ -194,16 +196,15 @@ func (p *Plugin) cleanupOnce(ctx context.Context) {
 	}
 
 	if removed > 0 {
-		p.logger.Info("WAL cleanup completed")
+		c.logger.Info("WAL cleanup completed", ports.Int64("bytes_freed", removed))
 	}
 }
 
-// currentActiveDay returns the day directory that should not be cleaned.
-func (p *Plugin) currentActiveDay(stateDir string) string {
+func (c *cleanupRunner) currentActiveDay(stateDir string) string {
 	if stateDir == "" {
 		return ""
 	}
-	st, err := p.loadState(stateDir)
+	st, err := c.loadState(stateDir)
 	if err != nil || st.IdxPath == "" {
 		return ""
 	}
@@ -214,20 +215,19 @@ func (p *Plugin) currentActiveDay(stateDir string) string {
 	return ""
 }
 
-// stateFile represents the persisted state structure.
-type stateFile struct {
+type cleanupStateFile struct {
 	IdxPath string `json:"idx_path"`
 }
 
-func (p *Plugin) loadState(stateDir string) (stateFile, error) {
+func (c *cleanupRunner) loadState(stateDir string) (cleanupStateFile, error) {
 	path := filepath.Join(stateDir, "status.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return stateFile{}, err
+		return cleanupStateFile{}, err
 	}
-	var st stateFile
+	var st cleanupStateFile
 	if err := json.Unmarshal(data, &st); err != nil {
-		return stateFile{}, err
+		return cleanupStateFile{}, err
 	}
 	return st, nil
 }
@@ -410,27 +410,3 @@ func removeSegment(seg walSegment) (int64, error) {
 	}
 	return bytesFreed, nil
 }
-
-func formatBytes(b int64) string {
-	const (
-		_          = iota
-		KB float64 = 1 << (10 * iota)
-		MB
-		GB
-	)
-
-	fb := float64(b)
-	switch {
-	case fb >= GB:
-		return fmt.Sprintf("%.2fGiB", fb/GB)
-	case fb >= MB:
-		return fmt.Sprintf("%.2fMiB", fb/MB)
-	case fb >= KB:
-		return fmt.Sprintf("%.2fKiB", fb/KB)
-	default:
-		return fmt.Sprintf("%dB", b)
-	}
-}
-
-// Ensure Plugin implements walship.Plugin.
-var _ walship.Plugin = (*Plugin)(nil)

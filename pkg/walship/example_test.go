@@ -169,7 +169,7 @@ func (l *customLogger) Error(msg string, fields ...walship.LogField) {
 	fmt.Printf("[ERROR] %s\n", msg)
 }
 
-// Example_withPlugins demonstrates using optional plugins.
+// Example_withPlugins demonstrates using optional plugins and cleanup config.
 func Example_withPlugins() {
 	cfg := walship.Config{
 		WALDir:  "/path/to/wal",
@@ -180,16 +180,18 @@ func Example_withPlugins() {
 
 	// Import plugins from:
 	//   "github.com/bft-labs/walship/plugins/resourcegating"
-	//   "github.com/bft-labs/walship/plugins/walcleanup"
+	//   "github.com/bft-labs/walship/plugins/configwatcher"
 	//
-	// Then create with plugins:
+	// Then create with plugins and cleanup config:
 	//
 	//   w, err := walship.New(cfg,
 	//       resourcegating.WithResourceGating(resourcegating.DefaultConfig()),
-	//       walcleanup.WithWALCleanup(walcleanup.DefaultConfig()),
+	//       configwatcher.WithConfigWatcher(configwatcher.DefaultConfig()),
+	//       walship.WithCleanupConfig(walship.DefaultCleanupConfig()),
 	//   )
 	//
 	// Plugins are initialized on Start() and shutdown on Stop().
+	// Cleanup is config-based and runs automatically when enabled.
 
 	w, err := walship.New(cfg)
 	if err != nil {
