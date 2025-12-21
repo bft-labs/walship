@@ -51,9 +51,9 @@ type options struct {
 }
 
 // defaultOptions returns options with sensible defaults.
-func defaultOptions(timeout http.Client) options {
+func defaultOptions(client *http.Client) options {
 	return options{
-		httpClient:   &timeout,
+		httpClient:   client,
 		logger:       &noopLogger{},
 		eventHandler: nil,
 		plugins:      nil,

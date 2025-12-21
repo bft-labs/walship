@@ -66,7 +66,7 @@ func New(cfg Config, opts ...Option) (*Walship, error) {
 
 	// Apply options
 	httpClient := &http.Client{Timeout: cfg.HTTPTimeout}
-	o := defaultOptions(*httpClient)
+	o := defaultOptions(httpClient)
 	for _, opt := range opts {
 		opt(&o)
 	}
@@ -279,22 +279,7 @@ func (w *Walship) Stop() error {
 // Status returns the current lifecycle state.
 // Safe to call concurrently from any goroutine.
 func (w *Walship) Status() State {
-	state := w.lifecycle.State()
-	// Convert internal state to public state
-	switch state {
-	case app.StateStopped:
-		return StateStopped
-	case app.StateStarting:
-		return StateStarting
-	case app.StateRunning:
-		return StateRunning
-	case app.StateStopping:
-		return StateStopping
-	case app.StateCrashed:
-		return StateCrashed
-	default:
-		return StateStopped
-	}
+	return convertState(w.lifecycle.State())
 }
 
 // hostname returns the current hostname.
