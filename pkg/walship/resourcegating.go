@@ -110,8 +110,11 @@ const goroutinesPerCPUAtFullLoad = 12.0
 // Uses goroutine count as a proxy for system load.
 // When the system is busy, returns false to delay sending.
 func (g *resourceGate) OK() bool {
+	// Read config values under lock (minimal lock duration)
 	g.mu.RLock()
-	defer g.mu.RUnlock()
+	threshold := g.cpuThreshold
+	logger := g.logger
+	g.mu.RUnlock()
 
 	// Heuristic: check goroutine count as a proxy for CPU load
 	// This is a lightweight check that doesn't require OS-specific code.
@@ -134,13 +137,13 @@ func (g *resourceGate) OK() bool {
 		approxLoad = 1.0
 	}
 
-	if approxLoad > g.cpuThreshold {
-		if g.logger != nil {
-			g.logger.Debug("resource gate: high system load, delaying send",
+	if approxLoad > threshold {
+		if logger != nil {
+			logger.Debug("resource gate: high system load, delaying send",
 				ports.Int("goroutines", numGoroutines),
 				ports.Int("cpus", numCPU),
 				ports.Float64("approx_load", approxLoad),
-				ports.Float64("threshold", g.cpuThreshold),
+				ports.Float64("threshold", threshold),
 			)
 		}
 		return false
