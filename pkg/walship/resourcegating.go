@@ -101,6 +101,11 @@ func newResourceGate(cfg ResourceGatingConfig, logger ports.Logger) *resourceGat
 	}
 }
 
+// goroutinesPerCPUAtFullLoad is the heuristic for mapping goroutine count to CPU load.
+// 12 goroutines per CPU is considered 100% load approximation.
+// This is a rough heuristic; actual CPU usage requires OS-level metrics.
+const goroutinesPerCPUAtFullLoad = 12.0
+
 // OK returns true if system resources allow sending.
 // Uses goroutine count as a proxy for system load.
 // When the system is busy, returns false to delay sending.
@@ -114,13 +119,17 @@ func (g *resourceGate) OK() bool {
 	numGoroutines := runtime.NumGoroutine()
 	numCPU := runtime.NumCPU()
 
+	// Guard against division by zero (can happen in restricted containers)
+	if numCPU <= 0 {
+		numCPU = 1
+	}
+
 	// Calculate load factor (goroutines per CPU)
 	loadFactor := float64(numGoroutines) / float64(numCPU)
 
 	// Map load factor to approximate CPU usage
 	// 10 goroutines/CPU ≈ 85% load (threshold default)
-	// This is a rough approximation; actual CPU usage requires OS-level metrics
-	approxLoad := loadFactor / 12.0 // 12 goroutines/CPU = 100% load approximation
+	approxLoad := loadFactor / goroutinesPerCPUAtFullLoad
 	if approxLoad > 1.0 {
 		approxLoad = 1.0
 	}
