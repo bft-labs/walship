@@ -18,6 +18,9 @@ import (
 // indexReaderBufSize is the buffer size for reading index files (64KB).
 const indexReaderBufSize = 64 * 1024
 
+// maxIndexAdvances limits consecutive empty index file advances to prevent infinite loops.
+const maxIndexAdvances = 100
+
 // IndexReader implements ports.FrameReader by reading WAL index files.
 type IndexReader struct {
 	walDir   string
@@ -68,9 +71,11 @@ func (r *IndexReader) Open(ctx context.Context, state *domain.State) error {
 
 	// Seek to offset if needed
 	if offset > 0 {
-		if _, err := r.idxFile.Seek(offset, io.SeekStart); err == nil {
-			r.reader.Reset(r.idxFile)
+		if _, err := r.idxFile.Seek(offset, io.SeekStart); err != nil {
+			f.Close()
+			return fmt.Errorf("seek to offset %d: %w", offset, err)
 		}
+		r.reader.Reset(r.idxFile)
 	}
 
 	// Open gz file if specified in state
@@ -87,29 +92,41 @@ func (r *IndexReader) Open(ctx context.Context, state *domain.State) error {
 
 // Next returns the next frame and its compressed data.
 func (r *IndexReader) Next(ctx context.Context) (domain.Frame, []byte, int, error) {
-	select {
-	case <-ctx.Done():
-		return domain.Frame{}, nil, 0, ctx.Err()
-	default:
-	}
-
-	// Read next frame metadata from index
-	line, err := r.reader.ReadBytes('\n')
-	if err != nil {
-		if errors.Is(err, io.EOF) {
-			// Try to advance to next index file
-			if next, ok, _ := nextIndexAfter(r.idxPath); ok {
-				if err := r.advanceToIndex(next); err != nil {
-					return domain.Frame{}, nil, 0, io.EOF
-				}
-				// Retry read
-				return r.Next(ctx)
-			}
-			return domain.Frame{}, nil, 0, io.EOF
+	// Use iteration instead of recursion to prevent stack overflow
+	for advances := 0; advances < maxIndexAdvances; advances++ {
+		select {
+		case <-ctx.Done():
+			return domain.Frame{}, nil, 0, ctx.Err()
+		default:
 		}
-		return domain.Frame{}, nil, 0, err
+
+		// Read next frame metadata from index
+		line, err := r.reader.ReadBytes('\n')
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				// Try to advance to next index file
+				if next, ok, _ := nextIndexAfter(r.idxPath); ok {
+					if err := r.advanceToIndex(next); err != nil {
+						return domain.Frame{}, nil, 0, io.EOF
+					}
+					// Continue to next iteration instead of recursive call
+					continue
+				}
+				return domain.Frame{}, nil, 0, io.EOF
+			}
+			return domain.Frame{}, nil, 0, err
+		}
+
+		// Successfully read a line, process it below
+		return r.processLine(ctx, line)
 	}
 
+	// Exceeded max advances - likely a problem with index files
+	return domain.Frame{}, nil, 0, fmt.Errorf("exceeded max index advances (%d)", maxIndexAdvances)
+}
+
+// processLine parses and processes a single index line.
+func (r *IndexReader) processLine(_ context.Context, line []byte) (domain.Frame, []byte, int, error) {
 	var meta domain.FrameMeta
 	if err := json.Unmarshal(line, &meta); err != nil {
 		return domain.Frame{}, nil, len(line), fmt.Errorf("bad index line: %w", err)
@@ -170,10 +187,14 @@ func (r *IndexReader) Close() error {
 // advanceToIndex closes the current index and opens the next one.
 func (r *IndexReader) advanceToIndex(nextPath string) error {
 	if r.idxFile != nil {
-		r.idxFile.Close()
+		if err := r.idxFile.Close(); err != nil && r.logger != nil {
+			r.logger.Warn("failed to close index file", ports.Err(err))
+		}
 	}
 	if r.gzFile != nil {
-		r.gzFile.Close()
+		if err := r.gzFile.Close(); err != nil && r.logger != nil {
+			r.logger.Warn("failed to close gz file", ports.Err(err))
+		}
 		r.gzFile = nil
 		r.curGz = ""
 	}
