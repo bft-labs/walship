@@ -5,6 +5,12 @@ import (
 	"time"
 )
 
+// Default backoff configuration values.
+const (
+	DefaultBackoffInitial = 500 * time.Millisecond
+	DefaultBackoffMax     = 10 * time.Second
+)
+
 // backoff implements exponential backoff with jitter.
 type backoff struct {
 	initial time.Duration

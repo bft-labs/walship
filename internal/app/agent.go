@@ -93,7 +93,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 	defer a.reader.Close()
 
-	backoff := newBackoff(500*time.Millisecond, 10*time.Second)
+	backoff := newBackoff(DefaultBackoffInitial, DefaultBackoffMax)
 
 	for {
 		select {
