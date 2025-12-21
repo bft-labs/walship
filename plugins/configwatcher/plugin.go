@@ -182,12 +182,11 @@ func (p *Plugin) watchLoop(ctx context.Context) {
 			}
 			p.debounceSend(ctx, p.debounceDelay)
 
-		case err, ok := <-watcher.Errors:
+		case watchErr, ok := <-watcher.Errors:
 			if !ok {
 				return
 			}
-			_ = err // logged as generic error
-			p.logger.Error("Config watcher: watcher error")
+			p.logger.Error("Config watcher: watcher error: " + watchErr.Error())
 		}
 	}
 }
@@ -211,37 +210,62 @@ func (p *Plugin) cometConfigPath() string { return filepath.Join(p.configDir(), 
 func (p *Plugin) configURL() string       { return p.serviceURL + configEndpoint }
 
 // buildMultipartPayload builds multipart form-data with config files.
-func (p *Plugin) buildMultipartPayload() (*bytes.Buffer, string) {
+// Returns the payload buffer, content type, and any error encountered.
+func (p *Plugin) buildMultipartPayload() (*bytes.Buffer, string, error) {
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 
-	writer.WriteField("captured_at", time.Now().UTC().Format(time.RFC3339Nano))
+	if err := writer.WriteField("captured_at", time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		return nil, "", fmt.Errorf("write captured_at: %w", err)
+	}
 
 	appContent, appErr := p.readFile(p.appConfigPath())
 	if appErr != nil {
-		writer.WriteField("app_error", p.errorToCode(appErr))
-	} else if part, err := writer.CreateFormFile("app_config", "app.toml"); err == nil {
-		part.Write([]byte(appContent))
+		if err := writer.WriteField("app_error", p.errorToCode(appErr)); err != nil {
+			return nil, "", fmt.Errorf("write app_error: %w", err)
+		}
+	} else {
+		part, err := writer.CreateFormFile("app_config", "app.toml")
+		if err != nil {
+			return nil, "", fmt.Errorf("create app_config field: %w", err)
+		}
+		if _, err := part.Write([]byte(appContent)); err != nil {
+			return nil, "", fmt.Errorf("write app_config: %w", err)
+		}
 	}
 
 	cometContent, cometErr := p.readFile(p.cometConfigPath())
 	if cometErr != nil {
-		writer.WriteField("comet_error", p.errorToCode(cometErr))
-	} else if part, err := writer.CreateFormFile("comet_config", "config.toml"); err == nil {
-		part.Write([]byte(cometContent))
+		if err := writer.WriteField("comet_error", p.errorToCode(cometErr)); err != nil {
+			return nil, "", fmt.Errorf("write comet_error: %w", err)
+		}
+	} else {
+		part, err := writer.CreateFormFile("comet_config", "config.toml")
+		if err != nil {
+			return nil, "", fmt.Errorf("create comet_config field: %w", err)
+		}
+		if _, err := part.Write([]byte(cometContent)); err != nil {
+			return nil, "", fmt.Errorf("write comet_config: %w", err)
+		}
 	}
 
 	contentType := writer.FormDataContentType()
-	writer.Close()
+	if err := writer.Close(); err != nil {
+		return nil, "", fmt.Errorf("close multipart writer: %w", err)
+	}
 
-	return &buf, contentType
+	return &buf, contentType, nil
 }
 
 // sendConfigWithRetry retries until success or context cancellation.
 func (p *Plugin) sendConfigWithRetry(ctx context.Context) {
 	retryCount := 0
 
-	snapshot, contentType := p.buildMultipartPayload()
+	snapshot, contentType, err := p.buildMultipartPayload()
+	if err != nil {
+		p.logger.Error("Config watcher: failed to build payload: " + err.Error())
+		return
+	}
 	snapshotBytes := snapshot.Bytes()
 
 	for {
@@ -311,7 +335,10 @@ func (p *Plugin) send(ctx context.Context, body io.Reader, contentType string) e
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return fmt.Errorf("unexpected status %d (failed to read body: %v)", resp.StatusCode, readErr)
+		}
 		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(respBody))
 	}
 

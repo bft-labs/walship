@@ -117,7 +117,10 @@ func (s *FrameSender) Send(ctx context.Context, frames []sender.FrameData, metad
 
 	// Check response
 	if resp.StatusCode/100 != 2 {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return fmt.Errorf("server returned %d (failed to read body: %v)", resp.StatusCode, readErr)
+		}
 		return fmt.Errorf("server returned %d: %s", resp.StatusCode, string(respBody))
 	}
 
