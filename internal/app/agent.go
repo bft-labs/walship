@@ -5,7 +5,6 @@ import (
 	"compress/gzip"
 	"context"
 	"errors"
-	"hash/crc32"
 	"io"
 	"time"
 
@@ -302,8 +301,7 @@ func (a *Agent) Flush(ctx context.Context, state *domain.State) error {
 	return nil
 }
 
-// verifyFrame decompresses a gzip frame and verifies its contents.
-// It reads the entire frame, calculates CRC32 and counts lines.
+// verifyFrame decompresses a gzip frame to verify it can be read.
 // Returns nil on success, error on decompression failure.
 func verifyFrame(compressed []byte) error {
 	zr, err := gzip.NewReader(bytes.NewReader(compressed))
@@ -312,28 +310,7 @@ func verifyFrame(compressed []byte) error {
 	}
 	defer zr.Close()
 
-	buf := make([]byte, 64<<10) // 64KB buffer
-	var lines int
-	h := crc32.NewIEEE()
-
-	for {
-		n, err := zr.Read(buf)
-		if n > 0 {
-			chunk := buf[:n]
-			h.Write(chunk)
-			lines += bytes.Count(chunk, []byte{'\n'})
-		}
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
-	}
-
-	// CRC and line count are computed but not checked against expected values
-	// as the original implementation didn't have expected values to compare
-	_ = lines
-	_ = h.Sum32()
-	return nil
+	// Read through entire content to verify decompression succeeds
+	_, err = io.Copy(io.Discard, zr)
+	return err
 }
