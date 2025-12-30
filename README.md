@@ -113,6 +113,72 @@ auth_key = "your-key"
 - Ensure memlogger is enabled in `app.toml`
 - Check WAL files exist in `<NODE_HOME>/data/log.wal/` (e.g., `~/.osmosisd/data/log.wal/`)
 
+## Library Usage
+
+Walship can be embedded as a library in your Go applications. The package provides a modular architecture that allows importing only the components you need.
+
+### Full Package (Recommended)
+
+```go
+import "github.com/bft-labs/walship/pkg/walship"
+
+func main() {
+    cfg := walship.Config{
+        WALDir:  "/path/to/wal",
+        AuthKey: "your-api-key",
+        ChainID: "my-chain",
+        NodeID:  "node-1",
+    }
+
+    agent, err := walship.New(cfg)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    ctx := context.Background()
+    if err := agent.Start(ctx); err != nil {
+        log.Fatal(err)
+    }
+    defer agent.Stop()
+
+    // Wait for shutdown signal...
+}
+```
+
+### Selective Module Import
+
+Import only what you need:
+
+```go
+// Just WAL reading
+import "github.com/bft-labs/walship/pkg/wal"
+
+// Just batching logic
+import "github.com/bft-labs/walship/pkg/batch"
+
+// Custom logging
+import "github.com/bft-labs/walship/pkg/log"
+```
+
+### Optional Plugins
+
+Add optional features via plugins:
+
+```go
+import (
+    "github.com/bft-labs/walship/pkg/walship"
+    "github.com/bft-labs/walship/plugins/resourcegating"
+    "github.com/bft-labs/walship/plugins/walcleanup"
+)
+
+agent, err := walship.New(cfg,
+    resourcegating.WithResourceGating(resourcegating.DefaultConfig()),
+    walcleanup.WithWALCleanup(walcleanup.DefaultConfig()),
+)
+```
+
+See `pkg/walship/doc.go` for complete documentation.
+
 ## Building from Source
 
 Requires Go 1.22+
