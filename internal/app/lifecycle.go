@@ -86,7 +86,8 @@ func (l *Lifecycle) TransitionTo(newState State, reason string) error {
 			return domain.ErrNotRunning
 		}
 	case StateStarting:
-		if newState != StateRunning && newState != StateCrashed {
+		// Allow transition to Running (normal), Stopping (early stop), or Crashed (error)
+		if newState != StateRunning && newState != StateStopping && newState != StateCrashed {
 			l.mu.Unlock()
 			return domain.ErrAlreadyRunning
 		}

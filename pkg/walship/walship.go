@@ -199,11 +199,25 @@ func (w *Walship) Start(ctx context.Context) error {
 	// Start the agent in a goroutine
 	w.lifecycle.AddWorker()
 	go func() {
+		// Recover from panics to ensure clean state transitions
+		// This defer must be first so it executes last (after WorkerDone)
+		defer func() {
+			if r := recover(); r != nil {
+				w.logger.Error("agent panic recovered", ports.Any("panic", r))
+				_ = w.lifecycle.TransitionTo(app.StateCrashed, "agent panic")
+			}
+		}()
+
+		// WorkerDone must be called after panic recovery completes
 		defer w.lifecycle.WorkerDone()
 
 		// Transition to running
 		if err := w.lifecycle.TransitionTo(app.StateRunning, "agent starting"); err != nil {
 			w.logger.Error("failed to transition to running", ports.Err(err))
+			// If we failed to start, transition to Stopping to help Stop() complete
+			if w.lifecycle.State() == app.StateStarting {
+				_ = w.lifecycle.TransitionTo(app.StateStopping, "failed to start")
+			}
 			return
 		}
 
@@ -214,6 +228,14 @@ func (w *Walship) Start(ctx context.Context) error {
 		if err != nil && err != context.Canceled {
 			w.logger.Error("agent error", ports.Err(err))
 			_ = w.lifecycle.TransitionTo(app.StateCrashed, err.Error())
+		} else {
+			// Normal completion or cancellation
+			// Ensure we transition to Stopping if still Running
+			// This allows Stop() to complete the final transition to Stopped
+			current := w.lifecycle.State()
+			if current == app.StateRunning {
+				_ = w.lifecycle.TransitionTo(app.StateStopping, "agent completed")
+			}
 		}
 	}()
 
@@ -227,7 +249,34 @@ func (w *Walship) Start(ctx context.Context) error {
 func (w *Walship) Stop() error {
 	w.mu.Lock()
 
-	if !w.lifecycle.CanStop() {
+	currentState := w.lifecycle.State()
+
+	// If already stopped or crashed, nothing to do
+	if currentState == app.StateStopped || currentState == app.StateCrashed {
+		w.mu.Unlock()
+		return nil
+	}
+
+	// If already stopping, just wait for completion
+	if currentState == app.StateStopping {
+		w.mu.Unlock()
+		// Skip to waiting for workers to complete
+		return w.waitForCompletion()
+	}
+
+	// Check if we're in a stoppable state (Starting or Running)
+	// Re-check state to avoid TOCTOU race condition
+	currentState = w.lifecycle.State()
+	if currentState != app.StateRunning && currentState != app.StateStarting {
+		// State changed between our checks - handle it
+		if currentState == app.StateStopping {
+			w.mu.Unlock()
+			return w.waitForCompletion()
+		}
+		if currentState == app.StateStopped || currentState == app.StateCrashed {
+			w.mu.Unlock()
+			return nil
+		}
 		w.mu.Unlock()
 		return domain.ErrNotRunning
 	}
@@ -235,6 +284,15 @@ func (w *Walship) Stop() error {
 	// Transition to stopping
 	if err := w.lifecycle.TransitionTo(app.StateStopping, "Stop() called"); err != nil {
 		w.mu.Unlock()
+		// Transition failed - likely because state changed concurrently
+		// Check if we're already in a stopping/stopped state
+		currentState := w.lifecycle.State()
+		if currentState == app.StateStopping {
+			return w.waitForCompletion()
+		}
+		if currentState == app.StateStopped || currentState == app.StateCrashed {
+			return nil
+		}
 		return err
 	}
 
@@ -245,6 +303,12 @@ func (w *Walship) Stop() error {
 
 	w.mu.Unlock()
 
+	return w.waitForCompletion()
+}
+
+// waitForCompletion waits for all workers to finish and performs cleanup.
+// This is called by Stop() after transitioning to Stopping state.
+func (w *Walship) waitForCompletion() error {
 	// Wait for workers with timeout
 	err := w.lifecycle.WaitWithTimeout(app.ShutdownTimeout)
 
@@ -267,11 +331,36 @@ func (w *Walship) Stop() error {
 	}
 
 	// Transition to stopped
-	if err != nil {
-		_ = w.lifecycle.TransitionTo(app.StateCrashed, "shutdown timeout")
-	} else {
-		_ = w.lifecycle.TransitionTo(app.StateStopped, "graceful shutdown")
+	// Ensure we're in Stopping state before final transition
+	// This handles all race conditions where agent goroutine hasn't completed state transition
+	currentState := w.lifecycle.State()
+
+	// If not already in a terminal or stopping state, force transition to Stopping
+	if currentState != app.StateStopping && currentState != app.StateStopped && currentState != app.StateCrashed {
+		w.logger.Warn("forcing transition to Stopping before final state",
+			ports.String("current_state", currentState.String()))
+
+		// Try to transition to Stopping; if it fails, go directly to Crashed
+		if transErr := w.lifecycle.TransitionTo(app.StateStopping, "force stopping"); transErr != nil {
+			w.logger.Error("failed to transition to Stopping, going to Crashed",
+				ports.Err(transErr),
+				ports.String("current_state", currentState.String()))
+			_ = w.lifecycle.TransitionTo(app.StateCrashed, "failed to stop gracefully")
+			return domain.ErrAlreadyRunning
+		}
 	}
+
+	// Final transition to terminal state
+	// Now we're guaranteed to be in Stopping, Stopped, or Crashed
+	currentState = w.lifecycle.State()
+	if currentState == app.StateStopping {
+		if err != nil {
+			_ = w.lifecycle.TransitionTo(app.StateCrashed, "shutdown timeout")
+		} else {
+			_ = w.lifecycle.TransitionTo(app.StateStopped, "graceful shutdown")
+		}
+	}
+	// If already Stopped or Crashed, nothing to do
 
 	return err
 }

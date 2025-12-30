@@ -484,10 +484,15 @@ func TestPlugin_StopAlreadyStopped(t *testing.T) {
 		t.Fatalf("New() failed: %v", err)
 	}
 
-	// Stop without starting should fail
+	// Stop without starting should be a no-op (already stopped)
 	err = w.Stop()
-	if err == nil {
-		t.Error("Stop() without Start() should have failed")
+	if err != nil {
+		t.Errorf("Stop() on already-stopped instance should be no-op, got error: %v", err)
+	}
+
+	// Verify still in stopped state
+	if w.Status() != walship.StateStopped {
+		t.Errorf("Status after Stop() on stopped instance = %v, want StateStopped", w.Status())
 	}
 }
 
@@ -1029,8 +1034,23 @@ func TestPlugin_StartStopRace(t *testing.T) {
 
 	wg.Wait()
 
-	// Should end in a stable state
-	status := w.Status()
+	// Wait for stable terminal state with timeout
+	// The Stop() goroutine may need a moment to complete final state transition
+	deadline := time.Now().Add(2 * time.Second)
+	var status walship.State
+	for {
+		status = w.Status()
+		if status == walship.StateStopped || status == walship.StateCrashed {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Errorf("Timeout waiting for terminal state, got %v, want Stopped or Crashed", status)
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// Verify we ended in a valid terminal state
 	if status != walship.StateStopped && status != walship.StateCrashed {
 		t.Errorf("Final status = %v, want Stopped or Crashed", status)
 	}
