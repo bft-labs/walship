@@ -6,6 +6,10 @@ A lightweight agent that streams Cosmos node WAL data to [apphash.io](https://ap
 
 ## Prerequisites
 
+> **Note for Chain Developers Only**
+>
+> This section is for chain developers who need to integrate apphash.io functionality into their chain binary. If you're an operator or partner running an already-integrated chain binary, skip this section and proceed directly to [Installation](#installation) and [Running as a Service](#running-as-a-service-recommended).
+
 Memlogger must be integrated and enabled on your node. We ship Cosmos SDK releases with memlogger already baked in; if you run a custom fork, you can cherry-pick our single memlogger commit to enable it. For a step-by-step walkthrough, see the [Getting Started Guide](https://docs.apphash.io/getting-started), or book time via [Calendly](https://calendly.com/actor93kor/30min)—we can guide you live or handle it for you.
 
 After integration, ensure `$NODE_HOME/config/app.toml` includes the following section:
@@ -18,6 +22,8 @@ interval = "2s"
 ```
 
 Once enabled, WAL files will rotate under `<NODE_HOME>/data/log.wal/`.
+
+---
 
 ## Installation
 
@@ -40,7 +46,9 @@ sudo mv walship /usr/local/bin/
 Other platforms: see [Releases](https://github.com/bft-labs/walship/releases).
 Checksums (`checksums.txt`) are published with each release.
 
-## Quick Start
+## Quick Start (Not Recommended)
+
+> **⚠️ Not recommended for production use.** Use [Running as a Service](#running-as-a-service-recommended) instead for better reliability and automatic restarts.
 
 ```bash
 # Get your auth key: https://apphash.io/ → create project → Project Settings.
@@ -49,7 +57,7 @@ walship --node-home "$NODE_HOME" \
   --auth-key <YOUR_AUTH_KEY>
 ```
 
-## Running as a Service
+## Running as a Service (RECOMMENDED)
 
 Create `/etc/systemd/system/walship.service`:
 
