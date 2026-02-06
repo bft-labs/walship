@@ -160,7 +160,21 @@ func Run(ctx context.Context, cfg Config) error {
 		}
 
 		// Large frame: send alone
+		// Warn if frame is extremely large (>50MB), as it may cause issues
+		const warnThresholdBytes = 50 << 20
+		if len(b) > warnThresholdBytes {
+			logger.Warn().
+				Str("file", fm.File).
+				Uint64("frame", fm.Frame).
+				Int("size_mb", len(b)/(1<<20)).
+				Msg("extremely large frame detected - consider investigating data size")
+		}
 		if cfg.MaxBatchBytes > 0 && len(b) > cfg.MaxBatchBytes {
+			logger.Debug().
+				Str("file", fm.File).
+				Uint64("frame", fm.Frame).
+				Int("size_mb", len(b)/(1<<20)).
+				Msg("large frame sent alone")
 			bf := batchFrame{Meta: fm, Compressed: b, IdxLineLen: len(line)}
 			batch = append(batch, bf)
 			batchBytes += len(b)
@@ -205,6 +219,13 @@ func trySend(cfg Config, httpClient *http.Client, batch *[]batchFrame, batchByte
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 
+	// Log batch details before building payload
+	logger.Debug().
+		Int("batch_frames", len(*batch)).
+		Int("batch_bytes", *batchBytes).
+		Int("max_batch_bytes", cfg.MaxBatchBytes).
+		Msg("Building multipart payload")
+
 	manifestJSON, err := json.Marshal(manifest)
 	if err != nil {
 		logger.Error().Err(err).Msg("marshal manifest")
@@ -242,6 +263,14 @@ func trySend(cfg Config, httpClient *http.Client, batch *[]batchFrame, batchByte
 		return
 	}
 
+	// Log actual multipart body size
+	bodySize := body.Len()
+	logger.Debug().
+		Int("body_size_bytes", bodySize).
+		Int("body_size_mb", bodySize/(1<<20)).
+		Int("frames_in_manifest", len(manifest)).
+		Msg("Multipart payload ready")
+
 	req, err := http.NewRequest(http.MethodPost, url, &body)
 	if err != nil {
 		return
@@ -273,6 +302,7 @@ func trySend(cfg Config, httpClient *http.Client, batch *[]batchFrame, batchByte
 	logger.Info().
 		Int("frames", len(*batch)).
 		Int("bytes", *batchBytes).
+		Int("size_mb", *batchBytes/(1<<20)).
 		Msg("sent batch")
 
 	// Success: commit idx offset

@@ -57,11 +57,19 @@ func DefaultConfig() Config {
 		PollInterval:   500 * time.Millisecond,
 		SendInterval:   5 * time.Second,
 		HardInterval:   10 * time.Second,
-		HTTPTimeout:    15 * time.Second,
+		// Increased timeout to handle large batches and backend ETL processing
+		// Large batches (e.g., store_trace_sets with 734KB avg frames) require:
+		// - Network transfer time: ~100MB on 10Mbps = ~80s
+		// - Backend ETL processing time: up to 60s
+		// - Total: 180s with safety margin
+		HTTPTimeout:    180 * time.Second,
 		CPUThreshold:   0.85,
 		NetThreshold:   0.70,
 		IfaceSpeedMbps: 1000,
-		MaxBatchBytes:  4 << 20, // 4MB
+		// Increased from 4MB to 16MB to reduce network round trips for large data
+		// With 734KB avg frames (store_trace_sets), 16MB batch = ~22 frames vs 4MB = ~5 frames
+		// This reduces network overhead while staying within backend memory limits
+		MaxBatchBytes:  16 << 20, // 16MB
 		StateDir:       defaultStateDir(),
 		AuthKey:        os.Getenv("WALSHIP_AUTH_KEY"),
 	}
