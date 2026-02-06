@@ -60,9 +60,10 @@ func DefaultConfig() Config {
 		// Increased timeout to handle large batches and backend ETL processing
 		// Large batches (e.g., store_trace_sets with 734KB avg frames) require:
 		// - Network transfer time: ~100MB on 10Mbps = ~80s
-		// - Backend ETL processing time: up to 60s
-		// - Total: 180s with safety margin
-		HTTPTimeout:    180 * time.Second,
+		// - Backend ETL processing time: observed up to 6+ minutes
+		// - Total: 600s (10 minutes) to handle worst-case scenarios
+		// Note: Long timeout is acceptable as walship runs per-node and processes sequentially
+		HTTPTimeout:    600 * time.Second,
 		CPUThreshold:   0.85,
 		NetThreshold:   0.70,
 		IfaceSpeedMbps: 1000,
