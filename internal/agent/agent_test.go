@@ -76,11 +76,18 @@ func TestTrySend(t *testing.T) {
 	}))
 	defer ts.Close()
 
+	tmpDir := t.TempDir()
+	traceStore, err := NewTraceStore(filepath.Join(tmpDir, "traces"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	cfg := Config{
 		ServiceURL: ts.URL,
 		ChainID:    "test-chain",
 		NodeID:     "test-node",
 		AuthKey:    "secret",
+		StateDir:   tmpDir,
 	}
 
 	batch := []batchFrame{
@@ -94,7 +101,7 @@ func TestTrySend(t *testing.T) {
 	st := state{IdxOffset: 0}
 	back := newBackoff(time.Millisecond, time.Second)
 
-	trySend(cfg, http.DefaultClient, &batch, &batchBytes, &st, "000.idx", nil, time.Now(), back)
+	trySend(cfg, http.DefaultClient, traceStore, &batch, &batchBytes, &st, "000.idx", time.Now(), back)
 
 	if len(batch) != 0 {
 		t.Errorf("batch length = %d, want 0", len(batch))
@@ -110,13 +117,13 @@ func TestTrySend(t *testing.T) {
 func TestRun_Startup(t *testing.T) {
 	tmpDir := t.TempDir()
 	walDir := filepath.Join(tmpDir, "data", "log.wal")
-	if err := os.MkdirAll(walDir, 0755); err != nil {
+	if err := os.MkdirAll(walDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
 	// Create genesis.json and node_key.json
 	configDir := filepath.Join(tmpDir, "config")
-	if err := os.MkdirAll(configDir, 0755); err != nil {
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	genesis := genesisDoc{ChainID: "test-chain"}
@@ -124,7 +131,7 @@ func TestRun_Startup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(configDir, "genesis.json"), genesisBytes, 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(configDir, "genesis.json"), genesisBytes, 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -145,12 +152,12 @@ func TestRun_Startup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(configDir, "node_key.json"), nodeKeyBytes, 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(configDir, "node_key.json"), nodeKeyBytes, 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	// Create dummy WAL files
-	if err := os.WriteFile(filepath.Join(walDir, "0000000000000000.idx"), []byte{}, 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(walDir, "0000000000000000.idx"), []byte{}, 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -173,14 +180,20 @@ func TestRun_Startup(t *testing.T) {
 }
 
 func TestTrySend_EmptyBatch(t *testing.T) {
-	cfg := Config{}
+	tmpDir := t.TempDir()
+	traceStore, err := NewTraceStore(filepath.Join(tmpDir, "traces"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := Config{StateDir: tmpDir}
 	batch := []batchFrame{}
 	batchBytes := 0
 	st := state{}
 	back := newBackoff(time.Millisecond, time.Second)
 
 	// Should return immediately without error or panic
-	trySend(cfg, http.DefaultClient, &batch, &batchBytes, &st, "000.idx", nil, time.Now(), back)
+	trySend(cfg, http.DefaultClient, traceStore, &batch, &batchBytes, &st, "000.idx", time.Now(), back)
 }
 
 func TestTrySend_ServerError(t *testing.T) {
@@ -189,14 +202,20 @@ func TestTrySend_ServerError(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	cfg := Config{ServiceURL: ts.URL}
+	tmpDir := t.TempDir()
+	traceStore, err := NewTraceStore(filepath.Join(tmpDir, "traces"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := Config{ServiceURL: ts.URL, StateDir: tmpDir}
 	batch := []batchFrame{{Meta: FrameMeta{File: "f", Frame: 1}}}
 	batchBytes := 10
 	st := state{IdxOffset: 0}
 	back := newBackoff(time.Millisecond, time.Second)
 
 	// Should handle 500 error gracefully (backoff and return, no state update)
-	trySend(cfg, http.DefaultClient, &batch, &batchBytes, &st, "000.idx", nil, time.Now(), back)
+	trySend(cfg, http.DefaultClient, traceStore, &batch, &batchBytes, &st, "000.idx", time.Now(), back)
 
 	if len(batch) == 0 {
 		t.Error("batch should not be cleared on server error")
@@ -214,9 +233,16 @@ func TestTrySend_Timeout(t *testing.T) {
 	}))
 	defer ts.Close()
 
+	tmpDir := t.TempDir()
+	traceStore, err := NewTraceStore(filepath.Join(tmpDir, "traces"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	cfg := Config{
 		ServiceURL:  ts.URL,
 		HTTPTimeout: 10 * time.Millisecond,
+		StateDir:    tmpDir,
 	}
 	httpClient := &http.Client{Timeout: cfg.HTTPTimeout}
 
@@ -225,7 +251,7 @@ func TestTrySend_Timeout(t *testing.T) {
 	st := state{IdxOffset: 0}
 	back := newBackoff(time.Millisecond, time.Second)
 
-	trySend(cfg, httpClient, &batch, &batchBytes, &st, "000.idx", nil, time.Now(), back)
+	trySend(cfg, httpClient, traceStore, &batch, &batchBytes, &st, "000.idx", time.Now(), back)
 
 	if len(batch) == 0 {
 		t.Error("batch should not be cleared on timeout")
@@ -258,6 +284,11 @@ func TestTrySend_StateVerification(t *testing.T) {
 	defer ts.Close()
 
 	tmpDir := t.TempDir()
+	traceStore, err := NewTraceStore(filepath.Join(tmpDir, "traces"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	cfg := Config{
 		ServiceURL: ts.URL,
 		StateDir:   tmpDir,
@@ -279,7 +310,7 @@ func TestTrySend_StateVerification(t *testing.T) {
 	st := state{IdxOffset: 100}
 	back := newBackoff(time.Millisecond, time.Second)
 
-	trySend(cfg, http.DefaultClient, &batch, &batchBytes, &st, "seg-000001.wal.idx", nil, time.Now(), back)
+	trySend(cfg, http.DefaultClient, traceStore, &batch, &batchBytes, &st, "seg-000001.wal.idx", time.Now(), back)
 
 	// Verify state updates
 	if st.IdxOffset != 135 { // 100 + 20 + 15
@@ -311,13 +342,13 @@ func TestRun_OnceMode(t *testing.T) {
 	// Test that Once mode exits cleanly on EOF without error
 	tmpDir := t.TempDir()
 	walDir := filepath.Join(tmpDir, "wal")
-	if err := os.MkdirAll(walDir, 0755); err != nil {
+	if err := os.MkdirAll(walDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
 	// Create a minimal index file with no frames (immediate EOF)
 	idxPath := filepath.Join(walDir, "0000000000000000.idx")
-	if err := os.WriteFile(idxPath, []byte{}, 0644); err != nil {
+	if err := os.WriteFile(idxPath, []byte{}, 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -331,7 +362,6 @@ func TestRun_OnceMode(t *testing.T) {
 
 	ctx := context.Background()
 	err := Run(ctx, cfg)
-
 	// Once mode should return nil on EOF, not an error
 	if err != nil {
 		t.Errorf("Once mode should return nil on EOF, got %v", err)
@@ -347,9 +377,16 @@ func TestTrySend_LargeFrame(t *testing.T) {
 	}))
 	defer ts.Close()
 
+	tmpDir := t.TempDir()
+	traceStore, err := NewTraceStore(filepath.Join(tmpDir, "traces"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	cfg := Config{
 		ServiceURL:    ts.URL,
 		MaxBatchBytes: 100, // Small limit
+		StateDir:      tmpDir,
 	}
 
 	// This frame is larger than MaxBatchBytes
@@ -367,7 +404,7 @@ func TestTrySend_LargeFrame(t *testing.T) {
 
 	// In actual Run(), large frames are added to batch then immediately sent
 	// Here we verify trySend processes it correctly
-	trySend(cfg, http.DefaultClient, &batch, &batchBytes, &st, "test.idx", nil, time.Now(), back)
+	trySend(cfg, http.DefaultClient, traceStore, &batch, &batchBytes, &st, "test.idx", time.Now(), back)
 
 	if sentBatches != 1 {
 		t.Errorf("Expected 1 batch sent, got %d", sentBatches)
@@ -387,9 +424,16 @@ func TestTrySend_BatchOverflow(t *testing.T) {
 	}))
 	defer ts.Close()
 
+	tmpDir := t.TempDir()
+	traceStore, err := NewTraceStore(filepath.Join(tmpDir, "traces"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	cfg := Config{
 		ServiceURL:    ts.URL,
 		MaxBatchBytes: 100,
+		StateDir:      tmpDir,
 	}
 
 	// First batch with 80 bytes
@@ -405,7 +449,7 @@ func TestTrySend_BatchOverflow(t *testing.T) {
 	back := newBackoff(time.Millisecond, time.Second)
 
 	// Try to send - should succeed
-	trySend(cfg, http.DefaultClient, &batch, &batchBytes, &st, "test.idx", nil, time.Now(), back)
+	trySend(cfg, http.DefaultClient, traceStore, &batch, &batchBytes, &st, "test.idx", time.Now(), back)
 
 	if sendCount != 1 {
 		t.Errorf("Expected 1 send, got %d", sendCount)
@@ -424,10 +468,17 @@ func TestTrySend_URLConstruction(t *testing.T) {
 	}))
 	defer ts.Close()
 
+	tmpDir := t.TempDir()
+	traceStore, err := NewTraceStore(filepath.Join(tmpDir, "traces"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	cfg := Config{
 		ServiceURL: ts.URL, // Base URL only, no /v1/ingest/wal-frames
 		ChainID:    "test-chain",
 		NodeID:     "test-node",
+		StateDir:   tmpDir,
 	}
 
 	batch := []batchFrame{
@@ -441,7 +492,7 @@ func TestTrySend_URLConstruction(t *testing.T) {
 	st := state{IdxOffset: 0}
 	back := newBackoff(time.Millisecond, time.Second)
 
-	trySend(cfg, http.DefaultClient, &batch, &batchBytes, &st, "000.idx", nil, time.Now(), back)
+	trySend(cfg, http.DefaultClient, traceStore, &batch, &batchBytes, &st, "000.idx", time.Now(), back)
 
 	expectedPath := "/v1/ingest/wal-frames"
 	if requestPath != expectedPath {
