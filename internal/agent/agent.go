@@ -51,15 +51,10 @@ func Run(ctx context.Context, cfg Config) error {
 	cfgPtr := &cfg
 	watcher := NewConfigWatcher(cfgPtr)
 	go watcher.Run(ctx)
-	go walCleanupLoop(ctx, cfg.WALDir, cfg.StateDir)
+	go cleanupLoop(ctx, cfg.WALDir, cfg.StateDir, cfg.TraceDir)
 
-	// Initialize trace store for height-indexed trace logs
-	traceDir := filepath.Join(cfg.StateDir, "traces")
-	traceStore, err := NewTraceStore(traceDir)
-	if err != nil {
-		return fmt.Errorf("init trace store: %w", err)
-	}
-	go traceCleanupLoop(ctx, cfg.StateDir)
+	// Initialize trace store to read SDK's height-indexed trace files
+	traceStore := NewTraceStore(cfg.TraceDir)
 
 	// Load prior state; if none, start from the oldest index (first logs)
 	st, _ := loadState(cfg.StateDir)
@@ -225,68 +220,22 @@ func trySend(cfg Config, httpClient *http.Client, traceStore *TraceStore, batch 
 		return
 	}
 
-	// Parse frames and separate trace from non-trace
-	var nonTraceFrames []batchFrame
 	var advance int64
 	for _, fr := range *batch {
 		advance += int64(fr.IdxLineLen)
-
-		separated, err := separateLogs(fr.Compressed)
-		if err != nil {
-			logger.Warn().Err(err).Str("file", fr.Meta.File).Msg("failed to parse frame, sending as-is")
-			nonTraceFrames = append(nonTraceFrames, fr)
-			continue
-		}
-
-		// Save trace lines by height
-		for height, lines := range separated.TraceByHeight {
-			if err := traceStore.Save(height, lines); err != nil {
-				logger.Warn().Err(err).Int64("height", height).Msg("failed to save trace")
-			}
-		}
-
-		// Compress non-trace lines
-		if len(separated.NonTraceLines) > 0 {
-			compressed, err := CompressLines(separated.NonTraceLines)
-			if err != nil {
-				logger.Warn().Err(err).Msg("failed to compress non-trace lines")
-				continue
-			}
-			newMeta := fr.Meta
-			newMeta.Len = uint64(len(compressed))
-			newMeta.Recs = uint32(len(separated.NonTraceLines))
-			nonTraceFrames = append(nonTraceFrames, batchFrame{
-				Meta:       newMeta,
-				Compressed: compressed,
-				IdxLineLen: fr.IdxLineLen,
-			})
-		}
 	}
 
-	// Send non-trace frames
-	if len(nonTraceFrames) == 0 {
-		logger.Debug().Msg("no non-trace frames to send")
-		st.IdxOffset += advance
-		st.LastSendAt = time.Now()
-		st.LastCommitAt = st.LastSendAt
-		_ = saveState(cfg.StateDir, *st)
-		*batch = (*batch)[:0]
-		*batchBytes = 0
-		back.Reset()
-		return
-	}
-
-	ingestResp, ok := sendFrames(cfg, httpClient, nonTraceFrames, curIdxBase, walFramesEndpoint, back)
+	ingestResp, ok := sendFrames(cfg, httpClient, *batch, curIdxBase, walFramesEndpoint, back)
 	if !ok {
 		return
 	}
 
 	logger.Info().
-		Int("frames", len(nonTraceFrames)).
+		Int("frames", len(*batch)).
 		Int("failure_heights", len(ingestResp.FailureHeights)).
-		Msg("sent non-trace batch")
+		Msg("sent batch")
 
-	// Send trace for failure heights
+	// Send trace for failure heights (read from SDK's trace directory)
 	if len(ingestResp.FailureHeights) > 0 {
 		sendTraceForHeights(cfg, httpClient, traceStore, ingestResp.FailureHeights, back)
 	}

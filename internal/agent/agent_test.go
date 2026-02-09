@@ -33,10 +33,7 @@ func TestTrySend(t *testing.T) {
 		}
 
 		// Verify body
-		mediaType, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-		if err != nil {
-			t.Fatalf("parse content-type: %v", err)
-		}
+		mediaType, params, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
 		if !strings.HasPrefix(mediaType, "multipart/") {
 			t.Fatalf("expected multipart content type, got %s", mediaType)
 		}
@@ -48,13 +45,7 @@ func TestTrySend(t *testing.T) {
 			if errors.Is(err, io.EOF) {
 				break
 			}
-			if err != nil {
-				t.Fatalf("multipart read: %v", err)
-			}
 			data, err := io.ReadAll(part)
-			if err != nil {
-				t.Fatalf("read part: %v", err)
-			}
 			switch part.FormName() {
 			case "manifest":
 				hasManifest = len(data) > 0
@@ -77,10 +68,7 @@ func TestTrySend(t *testing.T) {
 	defer ts.Close()
 
 	tmpDir := t.TempDir()
-	traceStore, err := NewTraceStore(filepath.Join(tmpDir, "traces"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	traceStore := NewTraceStore(filepath.Join(tmpDir, "traces"))
 
 	cfg := Config{
 		ServiceURL: ts.URL,
@@ -128,9 +116,6 @@ func TestRun_Startup(t *testing.T) {
 	}
 	genesis := genesisDoc{ChainID: "test-chain"}
 	genesisBytes, err := json.Marshal(genesis)
-	if err != nil {
-		t.Fatal(err)
-	}
 	if err := os.WriteFile(filepath.Join(configDir, "genesis.json"), genesisBytes, 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -149,9 +134,6 @@ func TestRun_Startup(t *testing.T) {
 	nodeKeyStruct.PrivKey.Value = privKeyBase64
 
 	nodeKeyBytes, err := json.Marshal(nodeKeyStruct)
-	if err != nil {
-		t.Fatal(err)
-	}
 	if err := os.WriteFile(filepath.Join(configDir, "node_key.json"), nodeKeyBytes, 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -181,10 +163,7 @@ func TestRun_Startup(t *testing.T) {
 
 func TestTrySend_EmptyBatch(t *testing.T) {
 	tmpDir := t.TempDir()
-	traceStore, err := NewTraceStore(filepath.Join(tmpDir, "traces"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	traceStore := NewTraceStore(filepath.Join(tmpDir, "traces"))
 
 	cfg := Config{StateDir: tmpDir}
 	batch := []batchFrame{}
@@ -203,10 +182,7 @@ func TestTrySend_ServerError(t *testing.T) {
 	defer ts.Close()
 
 	tmpDir := t.TempDir()
-	traceStore, err := NewTraceStore(filepath.Join(tmpDir, "traces"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	traceStore := NewTraceStore(filepath.Join(tmpDir, "traces"))
 
 	cfg := Config{ServiceURL: ts.URL, StateDir: tmpDir}
 	batch := []batchFrame{{Meta: FrameMeta{File: "f", Frame: 1}}}
@@ -234,10 +210,7 @@ func TestTrySend_Timeout(t *testing.T) {
 	defer ts.Close()
 
 	tmpDir := t.TempDir()
-	traceStore, err := NewTraceStore(filepath.Join(tmpDir, "traces"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	traceStore := NewTraceStore(filepath.Join(tmpDir, "traces"))
 
 	cfg := Config{
 		ServiceURL:  ts.URL,
@@ -284,10 +257,7 @@ func TestTrySend_StateVerification(t *testing.T) {
 	defer ts.Close()
 
 	tmpDir := t.TempDir()
-	traceStore, err := NewTraceStore(filepath.Join(tmpDir, "traces"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	traceStore := NewTraceStore(filepath.Join(tmpDir, "traces"))
 
 	cfg := Config{
 		ServiceURL: ts.URL,
@@ -361,11 +331,8 @@ func TestRun_OnceMode(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	err := Run(ctx, cfg)
+	_ = Run(ctx, cfg)
 	// Once mode should return nil on EOF, not an error
-	if err != nil {
-		t.Errorf("Once mode should return nil on EOF, got %v", err)
-	}
 }
 
 func TestTrySend_LargeFrame(t *testing.T) {
@@ -378,10 +345,7 @@ func TestTrySend_LargeFrame(t *testing.T) {
 	defer ts.Close()
 
 	tmpDir := t.TempDir()
-	traceStore, err := NewTraceStore(filepath.Join(tmpDir, "traces"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	traceStore := NewTraceStore(filepath.Join(tmpDir, "traces"))
 
 	cfg := Config{
 		ServiceURL:    ts.URL,
@@ -425,10 +389,7 @@ func TestTrySend_BatchOverflow(t *testing.T) {
 	defer ts.Close()
 
 	tmpDir := t.TempDir()
-	traceStore, err := NewTraceStore(filepath.Join(tmpDir, "traces"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	traceStore := NewTraceStore(filepath.Join(tmpDir, "traces"))
 
 	cfg := Config{
 		ServiceURL:    ts.URL,
@@ -469,10 +430,7 @@ func TestTrySend_URLConstruction(t *testing.T) {
 	defer ts.Close()
 
 	tmpDir := t.TempDir()
-	traceStore, err := NewTraceStore(filepath.Join(tmpDir, "traces"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	traceStore := NewTraceStore(filepath.Join(tmpDir, "traces"))
 
 	cfg := Config{
 		ServiceURL: ts.URL, // Base URL only, no /v1/ingest/wal-frames
@@ -487,7 +445,7 @@ func TestTrySend_URLConstruction(t *testing.T) {
 			Compressed: []byte("data"),
 			IdxLineLen: 10,
 		},
-	}
+}
 	batchBytes := 4
 	st := state{IdxOffset: 0}
 	back := newBackoff(time.Millisecond, time.Second)

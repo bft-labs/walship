@@ -13,76 +13,137 @@ import (
 	"sync"
 )
 
-// TraceStore manages height-indexed trace log files.
+// traceRange represents a range file's height bounds.
+type traceRange struct {
+	filename string
+	minH     int64
+	maxH     int64
+}
+
+// TraceStore reads range-based trace log files written by cosmos-sdk.
+// Files are named trace-{minHeight}-{maxHeight}.gz.
 type TraceStore struct {
 	dir string
 	mu  sync.RWMutex
 }
 
-// NewTraceStore creates a new TraceStore with the given directory.
-func NewTraceStore(dir string) (*TraceStore, error) {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, fmt.Errorf("create trace dir: %w", err)
-	}
-	return &TraceStore{dir: dir}, nil
+// NewTraceStore creates a new TraceStore for the given directory.
+func NewTraceStore(dir string) *TraceStore {
+	return &TraceStore{dir: dir}
 }
 
-// traceFileName returns the filename for a given height.
-func traceFileName(height int64) string {
-	return fmt.Sprintf("trace-%09d.wal.gz", height)
-}
-
-// parseTraceFileName extracts height from a trace filename.
-func parseTraceFileName(name string) (int64, bool) {
-	if !strings.HasPrefix(name, "trace-") || !strings.HasSuffix(name, ".wal.gz") {
-		return 0, false
+// parseRangeFileName extracts min and max height from a range filename.
+// Format: trace-{minHeight}-{maxHeight}.gz
+func parseRangeFileName(name string) (minH, maxH int64, ok bool) {
+	if !strings.HasPrefix(name, "trace-") || !strings.HasSuffix(name, ".gz") {
+		return 0, 0, false
 	}
 	numStr := strings.TrimPrefix(name, "trace-")
-	numStr = strings.TrimSuffix(numStr, ".wal.gz")
-	height, err := strconv.ParseInt(numStr, 10, 64)
-	if err != nil {
-		return 0, false
+	numStr = strings.TrimSuffix(numStr, ".gz")
+
+	parts := strings.Split(numStr, "-")
+	if len(parts) != 2 {
+		return 0, 0, false
 	}
-	return height, true
+
+	minH, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		return 0, 0, false
+	}
+	maxH, err = strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		return 0, 0, false
+	}
+	return minH, maxH, true
 }
 
-// Save stores trace lines for a specific height.
-// If trace data already exists for this height, it appends to it.
-func (s *TraceStore) Save(height int64, lines [][]byte) error {
-	if len(lines) == 0 {
-		return nil
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	path := filepath.Join(s.dir, traceFileName(height))
-
-	var existingLines [][]byte
-	if data, err := os.ReadFile(path); err == nil {
-		existingLines, _ = s.decompressLines(data)
-	}
-
-	allLines := append(existingLines, lines...)
-
-	compressed, err := CompressLines(allLines)
+// listRanges returns all range files in the directory.
+func (s *TraceStore) listRanges() ([]traceRange, error) {
+	entries, err := os.ReadDir(s.dir)
 	if err != nil {
-		return fmt.Errorf("compress trace: %w", err)
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
 	}
 
-	if err := os.WriteFile(path, compressed, 0o644); err != nil {
-		return fmt.Errorf("write trace file: %w", err)
+	var ranges []traceRange
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		minH, maxH, ok := parseRangeFileName(entry.Name())
+		if !ok {
+			continue
+		}
+		ranges = append(ranges, traceRange{
+			filename: entry.Name(),
+			minH:     minH,
+			maxH:     maxH,
+		})
 	}
 
-	return nil
+	sort.Slice(ranges, func(i, j int) bool { return ranges[i].minH < ranges[j].minH })
+	return ranges, nil
 }
 
-// Load reads trace data for a specific height.
+// findRangeForHeight finds the range file that contains the given height.
+func (s *TraceStore) findRangeForHeight(height int64) (*traceRange, error) {
+	ranges, err := s.listRanges()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, r := range ranges {
+		if height >= r.minH && height <= r.maxH {
+			return &r, nil
+		}
+	}
+	return nil, nil
+}
+
+var heightKey = []byte(`"height":`)
+
+// extractHeight extracts height from a StoreTraceSet line without full JSON parsing.
+// Format: {"_msg":"store trace set","height":150,"count":10,"traces":[...]}
+func extractHeight(line []byte) int64 {
+	idx := bytes.Index(line, heightKey)
+	if idx == -1 {
+		return 0
+	}
+
+	start := idx + len(heightKey)
+	for start < len(line) && (line[start] == ' ' || line[start] == '\t') {
+		start++
+	}
+
+	end := start
+	for end < len(line) && line[end] >= '0' && line[end] <= '9' {
+		end++
+	}
+
+	if start == end {
+		return 0
+	}
+
+	height, _ := strconv.ParseInt(string(line[start:end]), 10, 64)
+	return height
+}
+
+// Load reads trace data for a specific height, filtering from the range file.
 func (s *TraceStore) Load(height int64) ([]byte, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	path := filepath.Join(s.dir, traceFileName(height))
+	r, err := s.findRangeForHeight(height)
+	if err != nil {
+		return nil, err
+	}
+	if r == nil {
+		return nil, nil
+	}
+
+	path := filepath.Join(s.dir, r.filename)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -90,7 +151,24 @@ func (s *TraceStore) Load(height int64) ([]byte, error) {
 		}
 		return nil, err
 	}
-	return data, nil
+
+	lines, err := s.decompressLines(data)
+	if err != nil {
+		return nil, err
+	}
+
+	var filtered [][]byte
+	for _, line := range lines {
+		if extractHeight(line) == height {
+			filtered = append(filtered, line)
+		}
+	}
+
+	if len(filtered) == 0 {
+		return nil, nil
+	}
+
+	return CompressLines(filtered)
 }
 
 // LoadMultiple loads trace data for multiple heights and returns combined compressed data.
@@ -102,11 +180,33 @@ func (s *TraceStore) LoadMultiple(heights []int64) ([]byte, []FrameMeta, error) 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	heightSet := make(map[int64]bool)
+	for _, h := range heights {
+		heightSet[h] = true
+	}
+
+	ranges, err := s.listRanges()
+	if err != nil {
+		return nil, nil, err
+	}
+
 	var allLines [][]byte
 	var metas []FrameMeta
+	heightLines := make(map[int64][][]byte)
 
-	for _, height := range heights {
-		path := filepath.Join(s.dir, traceFileName(height))
+	for _, r := range ranges {
+		hasRelevant := false
+		for _, h := range heights {
+			if h >= r.minH && h <= r.maxH {
+				hasRelevant = true
+				break
+			}
+		}
+		if !hasRelevant {
+			continue
+		}
+
+		path := filepath.Join(s.dir, r.filename)
 		data, err := os.ReadFile(path)
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -117,14 +217,28 @@ func (s *TraceStore) LoadMultiple(heights []int64) ([]byte, []FrameMeta, error) 
 
 		lines, err := s.decompressLines(data)
 		if err != nil {
-			logger.Warn().Err(err).Int64("height", height).Msg("failed to decompress trace")
+			logger.Warn().Err(err).Str("file", r.filename).Msg("failed to decompress trace")
 			continue
 		}
 
+		for _, line := range lines {
+			h := extractHeight(line)
+			if heightSet[h] {
+				heightLines[h] = append(heightLines[h], line)
+			}
+		}
+	}
+
+	sort.Slice(heights, func(i, j int) bool { return heights[i] < heights[j] })
+	for _, h := range heights {
+		lines := heightLines[h]
+		if len(lines) == 0 {
+			continue
+		}
 		allLines = append(allLines, lines...)
 		metas = append(metas, FrameMeta{
-			File:  traceFileName(height),
-			Frame: uint64(height),
+			File:  fmt.Sprintf("trace-%d.gz", h),
+			Frame: uint64(h),
 			Recs:  uint32(len(lines)),
 		})
 	}
@@ -145,46 +259,20 @@ func (s *TraceStore) LoadMultiple(heights []int64) ([]byte, []FrameMeta, error) 
 	return compressed, metas, nil
 }
 
-// Delete removes trace files for the given heights.
-func (s *TraceStore) Delete(heights []int64) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	var errs []error
-	for _, height := range heights {
-		path := filepath.Join(s.dir, traceFileName(height))
-		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-			errs = append(errs, err)
-		}
-	}
-
-	if len(errs) > 0 {
-		return fmt.Errorf("failed to delete %d trace files", len(errs))
-	}
-	return nil
-}
-
-// DeleteBefore removes all trace files for heights less than the given height.
+// DeleteBefore removes all trace files where maxHeight < given height.
 func (s *TraceStore) DeleteBefore(height int64) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	entries, err := os.ReadDir(s.dir)
+	ranges, err := s.listRanges()
 	if err != nil {
 		return 0, err
 	}
 
 	deleted := 0
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		h, ok := parseTraceFileName(entry.Name())
-		if !ok {
-			continue
-		}
-		if h < height {
-			path := filepath.Join(s.dir, entry.Name())
+	for _, r := range ranges {
+		if r.maxH < height {
+			path := filepath.Join(s.dir, r.filename)
 			if err := os.Remove(path); err == nil {
 				deleted++
 			}
@@ -194,30 +282,23 @@ func (s *TraceStore) DeleteBefore(height int64) (int, error) {
 	return deleted, nil
 }
 
-// ListHeights returns all heights that have stored trace data.
+// ListHeights returns all heights covered by stored trace files.
 func (s *TraceStore) ListHeights() ([]int64, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	entries, err := os.ReadDir(s.dir)
+	ranges, err := s.listRanges()
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
 		return nil, err
 	}
 
 	var heights []int64
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		if h, ok := parseTraceFileName(entry.Name()); ok {
+	for _, r := range ranges {
+		for h := r.minH; h <= r.maxH; h++ {
 			heights = append(heights, h)
 		}
 	}
 
-	sort.Slice(heights, func(i, j int) bool { return heights[i] < heights[j] })
 	return heights, nil
 }
 
@@ -239,7 +320,7 @@ func (s *TraceStore) Size() (int64, error) {
 		if entry.IsDir() {
 			continue
 		}
-		if _, ok := parseTraceFileName(entry.Name()); ok {
+		if _, _, ok := parseRangeFileName(entry.Name()); ok {
 			info, err := entry.Info()
 			if err == nil {
 				total += info.Size()
@@ -278,16 +359,18 @@ func (s *TraceStore) Exists(height int64) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	path := filepath.Join(s.dir, traceFileName(height))
-	_, err := os.Stat(path)
-	return err == nil
+	r, err := s.findRangeForHeight(height)
+	return err == nil && r != nil
 }
 
 // Count returns the number of stored trace files.
 func (s *TraceStore) Count() (int, error) {
-	heights, err := s.ListHeights()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	ranges, err := s.listRanges()
 	if err != nil {
 		return 0, err
 	}
-	return len(heights), nil
+	return len(ranges), nil
 }

@@ -27,6 +27,7 @@ type Config struct {
 	NodeHome string
 	NodeID   string
 	WALDir   string
+	TraceDir string
 
 	ChainID string
 
@@ -98,6 +99,10 @@ func (c *Config) Validate() error {
 
 	if c.StateDir == "" {
 		c.StateDir = c.WALDir
+	}
+
+	if c.TraceDir == "" {
+		c.TraceDir = fmt.Sprintf("%s/data/traces", c.NodeHome)
 	}
 
 	if c.ServiceURL == "" {

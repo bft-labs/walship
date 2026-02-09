@@ -30,17 +30,16 @@ type walSegment struct {
 	idxSize int64
 }
 
-// walCleanupLoop runs a periodic cleanup that trims old WAL segments when the
-// directory grows beyond the high watermark. It removes the oldest segments
-// (by day dir then segment number) until the directory shrinks below the low
-// watermark, deleting the matching .idx alongside each .gz.
-func walCleanupLoop(ctx context.Context, walDir, stateDir string) {
+// cleanupLoop runs a periodic cleanup that trims old WAL segments and trace files
+// when they grow beyond their respective high watermarks.
+func cleanupLoop(ctx context.Context, walDir, stateDir, traceDir string) {
 	if walDir == "" {
 		return
 	}
 
 	if walCleanupTickerNow {
 		walCleanupOnce(ctx, walDir, stateDir)
+		traceCleanupOnce(traceDir)
 	}
 
 	t := time.NewTicker(walCleanupCheckInterval)
@@ -52,6 +51,7 @@ func walCleanupLoop(ctx context.Context, walDir, stateDir string) {
 			return
 		case <-t.C:
 			walCleanupOnce(ctx, walDir, stateDir)
+			traceCleanupOnce(traceDir)
 		}
 	}
 }
@@ -100,6 +100,77 @@ func walCleanupOnce(ctx context.Context, walDir, stateDir string) {
 			Str("freed", formatBytes(removed)).
 			Str("remaining", formatBytes(curSize)).
 			Msg("wal cleanup completed")
+	}
+}
+
+func traceCleanupOnce(traceDir string) {
+	if traceDir == "" {
+		return
+	}
+
+	store := NewTraceStore(traceDir)
+
+	curSize, err := store.Size()
+	if err != nil {
+		logger.Error().Err(err).Msg("trace cleanup: size check failed")
+		return
+	}
+
+	if curSize <= traceCleanupHighWatermark {
+		return
+	}
+
+	entries, err := os.ReadDir(traceDir)
+	if err != nil {
+		logger.Error().Err(err).Msg("trace cleanup: list files failed")
+		return
+	}
+
+	type rangeFile struct {
+		name string
+		minH int64
+	}
+	var files []rangeFile
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		minH, _, ok := parseRangeFileName(entry.Name())
+		if !ok {
+			continue
+		}
+		files = append(files, rangeFile{name: entry.Name(), minH: minH})
+	}
+
+	sort.Slice(files, func(i, j int) bool { return files[i].minH < files[j].minH })
+
+	removed := int64(0)
+	for _, f := range files {
+		if curSize <= traceCleanupLowWatermark {
+			break
+		}
+
+		path := filepath.Join(traceDir, f.name)
+		info, err := os.Stat(path)
+		if err != nil {
+			continue
+		}
+
+		if err := os.Remove(path); err != nil {
+			logger.Error().Err(err).Str("file", f.name).Msg("trace cleanup: remove failed")
+			continue
+		}
+
+		bytesFreed := info.Size()
+		curSize -= bytesFreed
+		removed += bytesFreed
+	}
+
+	if removed > 0 {
+		logger.Info().
+			Str("freed", formatBytes(removed)).
+			Str("remaining", formatBytes(curSize)).
+			Msg("trace cleanup completed")
 	}
 }
 
@@ -311,88 +382,4 @@ func currentActiveDay(stateDir string) string {
 		return day
 	}
 	return ""
-}
-
-// traceCleanupLoop runs periodic cleanup of trace files when they exceed the watermark.
-func traceCleanupLoop(ctx context.Context, stateDir string) {
-	if stateDir == "" {
-		return
-	}
-
-	traceDir := filepath.Join(stateDir, "traces")
-	if _, err := os.Stat(traceDir); os.IsNotExist(err) {
-		return
-	}
-
-	if walCleanupTickerNow {
-		traceCleanupOnce(traceDir)
-	}
-
-	t := time.NewTicker(walCleanupCheckInterval)
-	defer t.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			traceCleanupOnce(traceDir)
-		}
-	}
-}
-
-func traceCleanupOnce(traceDir string) {
-	store, err := NewTraceStore(traceDir)
-	if err != nil {
-		return
-	}
-
-	curSize, err := store.Size()
-	if err != nil {
-		logger.Error().Err(err).Msg("trace cleanup: size check failed")
-		return
-	}
-
-	if curSize <= traceCleanupHighWatermark {
-		return
-	}
-
-	heights, err := store.ListHeights()
-	if err != nil {
-		logger.Error().Err(err).Msg("trace cleanup: list heights failed")
-		return
-	}
-
-	if len(heights) == 0 {
-		return
-	}
-
-	removed := int64(0)
-	for _, height := range heights {
-		if curSize <= traceCleanupLowWatermark {
-			break
-		}
-
-		path := filepath.Join(traceDir, traceFileName(height))
-		info, err := os.Stat(path)
-		if err != nil {
-			continue
-		}
-
-		if err := os.Remove(path); err != nil {
-			logger.Error().Err(err).Int64("height", height).Msg("trace cleanup: remove failed")
-			continue
-		}
-
-		bytesFreed := info.Size()
-		curSize -= bytesFreed
-		removed += bytesFreed
-	}
-
-	if removed > 0 {
-		logger.Info().
-			Str("freed", formatBytes(removed)).
-			Str("remaining", formatBytes(curSize)).
-			Msg("trace cleanup completed")
-	}
 }
