@@ -36,11 +36,11 @@ signs:
   - cmd: cosign
     artifacts: checksum
     output: true
+    signature: "${artifact}.bundle"
     args:
       - "sign-blob"
       - "--yes"
-      - "--output-signature=${signature}"
-      - "--output-certificate=${certificate}"
+      - "--bundle=${signature}"
       - "${artifact}"
 
 sboms:
