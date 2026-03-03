@@ -9,24 +9,26 @@ import (
 
 // fileConfig mirrors Config but uses strings for durations to make TOML friendly.
 type fileConfig struct {
-	NodeHome       string  `toml:"node_home"`
-	NodeID         string  `toml:"node_id"`
-	WALDir         string  `toml:"wal_dir"`
-	ServiceURL     string  `toml:"service_url"`
+	NodeHome        string  `toml:"node_home"`
+	NodeID          string  `toml:"node_id"`
+	WALDir          string  `toml:"wal_dir"`
+	ChainBinaryPath string  `toml:"chain_binary_path"`
+	ChainID         string  `toml:"chain_id"`
+	ServiceURL      string  `toml:"service_url"`
 	AuthKey         string  `toml:"auth_key"`
-	PollInterval   string  `toml:"poll_interval"`
-	SendInterval   string  `toml:"send_interval"`
-	HardInterval   string  `toml:"hard_interval"`
-	HTTPTimeout    string  `toml:"http_timeout"`
-	CPUThreshold   float64 `toml:"cpu_threshold"`
-	NetThreshold   float64 `toml:"net_threshold"`
-	Iface          string  `toml:"iface"`
-	IfaceSpeedMbps int     `toml:"iface_speed_mbps"`
-	MaxBatchBytes  int     `toml:"max_batch_bytes"`
-	StateDir       string  `toml:"state_dir"`
-	Verify         *bool   `toml:"verify"`
-	Meta           *bool   `toml:"meta"`
-	Once           *bool   `toml:"once"`
+	PollInterval    string  `toml:"poll_interval"`
+	SendInterval    string  `toml:"send_interval"`
+	HardInterval    string  `toml:"hard_interval"`
+	HTTPTimeout     string  `toml:"http_timeout"`
+	CPUThreshold    float64 `toml:"cpu_threshold"`
+	NetThreshold    float64 `toml:"net_threshold"`
+	Iface           string  `toml:"iface"`
+	IfaceSpeedMbps  int     `toml:"iface_speed_mbps"`
+	MaxBatchBytes   int     `toml:"max_batch_bytes"`
+	StateDir        string  `toml:"state_dir"`
+	Verify          *bool   `toml:"verify"`
+	Meta            *bool   `toml:"meta"`
+	Once            *bool   `toml:"once"`
 }
 
 // loadFileConfig reads and parses a TOML config file.
@@ -59,6 +61,8 @@ func applyFileConfig(cfg *Config, fc fileConfig, changed map[string]bool) error 
 	s.setString("node-home", fc.NodeHome, &cfg.NodeHome)
 	s.setString("node-id", fc.NodeID, &cfg.NodeID)
 	s.setString("wal-dir", fc.WALDir, &cfg.WALDir)
+	s.setString("chain-binary-path", fc.ChainBinaryPath, &cfg.ChainBinaryPath)
+	s.setString("chain-id", fc.ChainID, &cfg.ChainID)
 	s.setString("service-url", fc.ServiceURL, &cfg.ServiceURL)
 	s.setString("auth-key", fc.AuthKey, &cfg.AuthKey)
 	s.setString("iface", fc.Iface, &cfg.Iface)
