@@ -30,7 +30,7 @@ Stream your node's consensus feed to apphash.io without slowing your validator.
 
 Highlights:
   - Batches and backpressures automatically so performance stays intact.
-  - Discovers chain/node IDs from your node home; configure via file, env, or flags.
+  - Never reads private key files; derives node ID via the chain binary.
   - Safe defaults with tunable thresholds for CPU/network utilization.
   - Requires apphash SDK integration and an API key—read the docs or email us.
 
@@ -41,7 +41,8 @@ Contact: actor93kor@gmail.com
 var longHelp = strings.TrimSpace(helpBanner) + "\n\n" + strings.TrimSpace(helpDescription)
 
 var exampleUsage = strings.TrimSpace(`
-  walship --node-home ~/.mychain --auth-key <api-key>
+  walship --chain-binary-path /path/to/evmd --chain-id evm_9001-2 --node-home ~/.mychain --auth-key <api-key>
+  walship --node-id <hex> --chain-id <chain> --node-home ~/.mychain --auth-key <api-key>
   walship --config $HOME/.walship/config.toml --once
 `)
 
@@ -118,6 +119,9 @@ func main() {
 	root.Flags().StringVar(&cfgPath, "config", "", "path to config file (default: $HOME/.walship/config.toml)")
 	root.Flags().StringVar(&cfg.NodeHome, "node-home", "", "application home directory")
 	root.Flags().StringVar(&cfg.WALDir, "wal-dir", cfg.WALDir, "WAL directory containing .idx/.gz pairs")
+	root.Flags().StringVar(&cfg.ChainBinaryPath, "chain-binary-path", "", "path to chain binary (e.g. evmd) for deriving node-id without reading key files")
+	root.Flags().StringVar(&cfg.ChainID, "chain-id", "", "chain ID (e.g. evmos_9001-2)")
+	root.Flags().StringVar(&cfg.NodeID, "node-id", cfg.NodeID, "node ID (40-char hex; alternative to --chain-binary-path)")
 
 	root.Flags().StringVar(&cfg.ServiceURL, "service-url", cfg.ServiceURL, fmt.Sprintf("base service URL (defaults to %s; override only for internal testing)", agent.DefaultServiceURL))
 	if err := root.Flags().MarkHidden("service-url"); err != nil {

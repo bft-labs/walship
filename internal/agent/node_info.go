@@ -1,116 +1,136 @@
 package agent
 
 import (
-	"crypto/ed25519"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/hex"
-	"encoding/json"
+	"context"
 	"fmt"
 	"os"
-	"path/filepath"
+	"os/exec"
+	"regexp"
+	"strings"
+	"time"
 )
 
 const (
-	DefaultConfigDir       = "config"
-	DefaultGenesisJSONName = "genesis.json"
-	DefaultNodeKeyName     = "node_key.json"
+	// queryTimeout is the maximum time allowed for binary execution.
+	queryTimeout = 10 * time.Second
 )
 
-// LoadNodeInfo loads ChainID and NodeID from files if they are not already set in the config.
-// It respects the NodeHome directory in the config.
+// validNodeID matches a 40-character lowercase hex string (CometBFT node ID format).
+var validNodeID = regexp.MustCompile(`^[0-9a-f]{40}$`)
+
+// LoadNodeInfo resolves ChainID and NodeID from explicit config or by querying the
+// chain binary. It never reads private key material from disk.
+//
+// Resolution order for each field:
+//  1. Already set via flag / env / config file — keep as-is.
+//  2. ChainBinaryPath is set — query the binary.
+//  3. Neither — return an actionable error.
 func LoadNodeInfo(cfg *Config) error {
-	// Read ChainID from genesis.json if not set
 	if cfg.ChainID == "" {
-		if cfg.NodeHome != "" {
-			chainID, err := readChainID(cfg.NodeHome)
-			if err != nil {
-				return fmt.Errorf("read chain id: %w", err)
-			}
-			cfg.ChainID = chainID
-		} else {
-			return fmt.Errorf("chain-id is required (or node-home)")
-		}
+		return fmt.Errorf("chain-id is required (set --chain-id, WALSHIP_CHAIN_ID, or chain_id in config file)")
 	}
 
-	// Read NodeID from node_key.json if not set (or default)
 	if cfg.NodeID == "" || cfg.NodeID == "default" {
-		if cfg.NodeHome != "" {
-			nodeID, err := readNodeID(cfg.NodeHome)
+		if cfg.ChainBinaryPath != "" {
+			nodeID, err := queryNodeID(cfg.ChainBinaryPath, cfg.NodeHome)
 			if err != nil {
-				return fmt.Errorf("read node id: %w", err)
+				return fmt.Errorf("query node id: %w", err)
 			}
 			cfg.NodeID = nodeID
 		} else {
-			return fmt.Errorf("node-id is required (or node-home)")
+			return fmt.Errorf("node-id is required (set --node-id, WALSHIP_NODE_ID, or use --chain-binary-path)")
 		}
 	}
 	return nil
 }
 
-func readChainID(nodeHome string) (string, error) {
-	path := rootify(filepath.Join(DefaultConfigDir, DefaultGenesisJSONName), nodeHome)
-	b, err := os.ReadFile(path)
+// queryNodeID executes "$binary comet show-node-id --home $nodeHome" and returns
+// the validated node ID. The binary path is resolved and verified before execution.
+func queryNodeID(binaryPath, nodeHome string) (string, error) {
+	resolved, err := resolveBinary(binaryPath)
 	if err != nil {
 		return "", err
 	}
-	var doc genesisDoc
-	if err := json.Unmarshal(b, &doc); err != nil {
-		return "", err
-	}
-	return doc.ChainID, nil
-}
 
-func readNodeID(nodeHome string) (string, error) {
-	path := rootify(filepath.Join(DefaultConfigDir, DefaultNodeKeyName), nodeHome)
-	b, err := os.ReadFile(path)
+	args := []string{"comet", "show-node-id"}
+	if nodeHome != "" {
+		args = append(args, "--home", nodeHome)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, resolved, args...)
+	// Isolate child process: discard stdin, capture only stdout.
+	cmd.Stdin = nil
+
+	out, err := cmd.Output()
 	if err != nil {
-		return "", err
-	}
-	var nk nodeKey
-	if err := json.Unmarshal(b, &nk); err != nil {
-		return "", err
+		if ctx.Err() == context.DeadlineExceeded {
+			return "", fmt.Errorf("binary timed out after %s", queryTimeout)
+		}
+		var stderr string
+		if ee, ok := err.(*exec.ExitError); ok && len(ee.Stderr) > 0 {
+			stderr = strings.TrimSpace(string(ee.Stderr))
+			if len(stderr) > 256 {
+				stderr = stderr[:256]
+			}
+		}
+		if stderr != "" {
+			return "", fmt.Errorf("exec %s: %w: %s", resolved, err, stderr)
+		}
+		return "", fmt.Errorf("exec %s: %w", resolved, err)
 	}
 
-	// Decode base64 private key
-	privKeyBytes, err := base64.StdEncoding.DecodeString(nk.PrivKey.Value)
+	nodeID := strings.ToLower(strings.TrimSpace(string(out)))
+
+	if !validNodeID.MatchString(nodeID) {
+		return "", fmt.Errorf("unexpected node-id format from binary (expected 40 hex chars): %q", sanitizeOutput(nodeID))
+	}
+
+	return nodeID, nil
+}
+
+// resolveBinary validates and resolves the chain binary path.
+// It ensures:
+//   - The path is non-empty and contains no null bytes.
+//   - The path resolves to an existing, regular, executable file.
+func resolveBinary(binaryPath string) (string, error) {
+	if binaryPath == "" {
+		return "", fmt.Errorf("chain-binary-path is empty")
+	}
+
+	// Reject null bytes (path injection vector).
+	if strings.ContainsRune(binaryPath, 0) {
+		return "", fmt.Errorf("chain-binary-path contains invalid characters")
+	}
+
+	// exec.LookPath resolves both absolute paths and $PATH lookups.
+	resolved, err := exec.LookPath(binaryPath)
 	if err != nil {
-		return "", fmt.Errorf("decode priv key: %w", err)
+		return "", fmt.Errorf("chain binary not found: %w", err)
 	}
 
-	// Ed25519 private key is 64 bytes. Public key is the last 32 bytes.
-	// Or we can regenerate it from the seed (first 32 bytes).
-	// CometBFT uses standard Ed25519.
-	if len(privKeyBytes) != ed25519.PrivateKeySize {
-		return "", fmt.Errorf("invalid priv key length: %d", len(privKeyBytes))
+	info, err := os.Stat(resolved)
+	if err != nil {
+		return "", fmt.Errorf("stat chain binary: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("chain-binary-path is not a regular file: %s", resolved)
 	}
 
-	privKey := ed25519.PrivateKey(privKeyBytes)
-	pubKey := privKey.Public().(ed25519.PublicKey)
-
-	// Address is the first 20 bytes of SHA256(PubKey)
-	sha := sha256.Sum256(pubKey)
-	address := sha[:20]
-
-	return hex.EncodeToString(address), nil
+	return resolved, nil
 }
 
-// rootify returns the absolute path if path is absolute,
-// otherwise it joins nodeHome and path.
-func rootify(path, nodeHome string) string {
-	if filepath.IsAbs(path) {
-		return path
+// sanitizeOutput truncates and cleans output for safe inclusion in error messages.
+func sanitizeOutput(s string) string {
+	if len(s) > 120 {
+		s = s[:120] + "..."
 	}
-	return filepath.Join(nodeHome, path)
-}
-
-type genesisDoc struct {
-	ChainID string `json:"chain_id"`
-}
-
-type nodeKey struct {
-	PrivKey struct {
-		Type  string `json:"type"`
-		Value string `json:"value"`
-	} `json:"priv_key"`
+	return strings.Map(func(r rune) rune {
+		if r < 32 && r != '\n' {
+			return -1
+		}
+		return r
+	}, s)
 }

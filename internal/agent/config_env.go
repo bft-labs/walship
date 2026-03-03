@@ -11,6 +11,8 @@ func ApplyEnvConfig(cfg *Config, changed map[string]bool) error {
 	s.setString("node-home", os.Getenv("WALSHIP_NODE_HOME"), &cfg.NodeHome)
 	s.setString("node-id", os.Getenv("WALSHIP_NODE_ID"), &cfg.NodeID)
 	s.setString("wal-dir", os.Getenv("WALSHIP_WAL_DIR"), &cfg.WALDir)
+	s.setString("chain-binary-path", os.Getenv("WALSHIP_CHAIN_BINARY_PATH"), &cfg.ChainBinaryPath)
+	s.setString("chain-id", os.Getenv("WALSHIP_CHAIN_ID"), &cfg.ChainID)
 	s.setString("service-url", os.Getenv("WALSHIP_SERVICE_URL"), &cfg.ServiceURL)
 	s.setString("auth-key", os.Getenv("WALSHIP_AUTH_KEY"), &cfg.AuthKey)
 	s.setString("iface", os.Getenv("WALSHIP_IFACE"), &cfg.Iface)

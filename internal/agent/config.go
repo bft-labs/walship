@@ -24,9 +24,10 @@ type FrameMeta struct {
 }
 
 type Config struct {
-	NodeHome string
-	NodeID   string
-	WALDir   string
+	NodeHome        string
+	NodeID          string
+	WALDir          string
+	ChainBinaryPath string
 
 	ChainID string
 
@@ -52,11 +53,11 @@ type Config struct {
 // DefaultConfig returns a Config with default values.
 func DefaultConfig() Config {
 	return Config{
-		NodeID:         "default",
-		ServiceURL:     DefaultServiceURL,
-		PollInterval:   500 * time.Millisecond,
-		SendInterval:   5 * time.Second,
-		HardInterval:   10 * time.Second,
+		NodeID:       "default",
+		ServiceURL:   DefaultServiceURL,
+		PollInterval: 500 * time.Millisecond,
+		SendInterval: 5 * time.Second,
+		HardInterval: 10 * time.Second,
 		// Increased timeout to handle large batches and backend ETL processing
 		// Large batches (e.g., store_trace_sets with 734KB avg frames) require:
 		// - Network transfer time: ~100MB on 10Mbps = ~80s
@@ -70,9 +71,9 @@ func DefaultConfig() Config {
 		// Increased from 4MB to 16MB to reduce network round trips for large data
 		// With 734KB avg frames (store_trace_sets), 16MB batch = ~22 frames vs 4MB = ~5 frames
 		// This reduces network overhead while staying within backend memory limits
-		MaxBatchBytes:  16 << 20, // 16MB
-		StateDir:       defaultStateDir(),
-		AuthKey:        os.Getenv("WALSHIP_AUTH_KEY"),
+		MaxBatchBytes: 16 << 20, // 16MB
+		StateDir:      defaultStateDir(),
+		AuthKey:       os.Getenv("WALSHIP_AUTH_KEY"),
 	}
 }
 

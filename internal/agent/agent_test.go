@@ -2,9 +2,6 @@ package agent
 
 import (
 	"context"
-	"crypto/ed25519"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"io"
 	"mime"
@@ -114,48 +111,16 @@ func TestRun_Startup(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create genesis.json and node_key.json
-	configDir := filepath.Join(tmpDir, "config")
-	if err := os.MkdirAll(configDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	genesis := genesisDoc{ChainID: "test-chain"}
-	genesisBytes, err := json.Marshal(genesis)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(configDir, "genesis.json"), genesisBytes, 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	// Create node_key.json with valid private key
-	_, privKey, _ := ed25519.GenerateKey(nil)
-	privKeyBase64 := base64.StdEncoding.EncodeToString(privKey)
-
-	nodeKeyStruct := struct {
-		PrivKey struct {
-			Type  string `json:"type"`
-			Value string `json:"value"`
-		} `json:"priv_key"`
-	}{}
-	nodeKeyStruct.PrivKey.Type = "tendermint/PrivKeyEd25519"
-	nodeKeyStruct.PrivKey.Value = privKeyBase64
-
-	nodeKeyBytes, err := json.Marshal(nodeKeyStruct)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(configDir, "node_key.json"), nodeKeyBytes, 0644); err != nil {
-		t.Fatal(err)
-	}
-
 	// Create dummy WAL files
 	if err := os.WriteFile(filepath.Join(walDir, "0000000000000000.idx"), []byte{}, 0644); err != nil {
 		t.Fatal(err)
 	}
 
+	// No sensitive file reads: ChainID and NodeID are set explicitly.
 	cfg := Config{
 		NodeHome:     tmpDir,
+		ChainID:      "test-chain",
+		NodeID:       "abcdef0123456789abcdef0123456789abcdef01",
 		WALDir:       walDir,
 		ServiceURL:   "http://localhost:8080",
 		PollInterval: time.Millisecond,
@@ -166,7 +131,7 @@ func TestRun_Startup(t *testing.T) {
 	defer cancel()
 
 	// It should run and exit on context cancellation without error (other than context deadline)
-	err = Run(ctx, cfg)
+	err := Run(ctx, cfg)
 	if err != nil && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
 		t.Errorf("Run() error = %v", err)
 	}

@@ -5,6 +5,8 @@
 //	cfg := walship.DefaultConfig()
 //	cfg.NodeHome = "/path/to/node"
 //	cfg.AuthKey = "your-api-key"
+//	cfg.ChainID = "mychain-1"
+//	cfg.ChainBinaryPath = "/usr/local/bin/mychaind"
 //	if err := cfg.Validate(); err != nil {
 //	    log.Fatal(err)
 //	}
@@ -44,9 +46,10 @@ func DefaultConfig() Config {
 	return agent.DefaultConfig()
 }
 
-// LoadNodeInfo extracts ChainID and NodeID from the node's configuration files.
-// It reads genesis.json for ChainID and node_key.json for NodeID.
-// This should be called after setting cfg.NodeHome and before Run.
+// LoadNodeInfo resolves ChainID and NodeID from explicit config values or by
+// querying the chain binary. It never reads private key material from disk.
+// This should be called after setting cfg.ChainID (required) and optionally
+// cfg.ChainBinaryPath, then before Run.
 func LoadNodeInfo(cfg *Config) error {
 	return agent.LoadNodeInfo(cfg)
 }
