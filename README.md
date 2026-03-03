@@ -54,8 +54,12 @@ Checksums (`checksums.txt`) are published with each release.
 # Get your auth key: https://apphash.io/ → create project → Project Settings.
 NODE_HOME="$HOME/.osmosisd"  # e.g., ~/.neutrond, ~/.quasard
 walship --node-home "$NODE_HOME" \
+  --chain-binary-path /path/to/osmosisd \
+  --chain-id osmosis-1 \
   --auth-key <YOUR_AUTH_KEY>
 ```
+
+> **Tip:** If you prefer not to use `--chain-binary-path`, you can pass `--node-id <hex>` directly instead.
 
 ## Running as a Service (RECOMMENDED)
 
@@ -70,6 +74,8 @@ After=network-online.target
 User=validator
 ExecStart=/usr/local/bin/walship \
   --node-home /home/validator/.osmosisd \
+  --chain-binary-path /usr/local/bin/osmosisd \
+  --chain-id osmosis-1 \
   --auth-key <YOUR_AUTH_KEY>
 Restart=always
 RestartSec=5
@@ -78,7 +84,7 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
-Adjust `User`, `--node-home`, and `--auth-key` to match your environment. If you prefer not to keep the key in the unit file, you can supply `WALSHIP_AUTH_KEY` (and other flags) via an `EnvironmentFile`.
+Adjust `User`, `--node-home`, `--chain-binary-path`, `--chain-id`, and `--auth-key` to match your environment. If you prefer not to keep the key in the unit file, you can supply `WALSHIP_AUTH_KEY` (and other flags) via an `EnvironmentFile`.
 
 Enable and start:
 
@@ -98,7 +104,9 @@ Essential flags are below; run `walship -h` to see the full list. All flags can 
 | Flag | Env | Description |
 |------|-----|-------------|
 | `--node-home` | `WALSHIP_NODE_HOME` | Node home directory (e.g., `~/.osmosisd`, `~/.<binary>d`) |
+| `--chain-id` | `WALSHIP_CHAIN_ID` | Chain ID (e.g., `osmosis-1`, `evmos_9001-2`) |
 | `--auth-key` | `WALSHIP_AUTH_KEY` | Project auth key from `apphash.io` → Project Settings |
+| `--chain-binary-path` | `WALSHIP_CHAIN_BINARY_PATH` | Path to chain binary (e.g., `osmosisd`). Derives node ID via `comet show-node-id` |
 
 ### Config File
 
@@ -106,12 +114,14 @@ Alternatively, create `~/.walship/config.toml`:
 
 ```toml
 node_home = "/home/validator/.osmosisd"
+chain_binary_path = "/usr/local/bin/osmosisd"
+chain_id = "osmosis-1"
 auth_key = "your-key"
 ```
 
 ## Additional Details
 
-- walship auto-discovers `chain-id` and `node-id` from your node's config files and genesis.
+- walship never reads any key files (`node_key.json`, `priv_validator_key.json`). Node ID is derived by executing the chain binary (`comet show-node-id`) or supplied directly via `--node-id`.
 - Data is sent to `api.apphash.io` (no custom endpoint or proxy configuration needed).
 - The auth key identifies your project; keep it private even though it is not highly privileged.
 
