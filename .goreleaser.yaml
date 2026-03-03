@@ -32,6 +32,23 @@ archives:
 checksum:
   name_template: 'checksums.txt'
 
+signs:
+  - cmd: cosign
+    artifacts: checksum
+    output: true
+    args:
+      - "sign-blob"
+      - "--yes"
+      - "--output-signature=${signature}"
+      - "--output-certificate=${certificate}"
+      - "${artifact}"
+
+sboms:
+  - id: archive
+    artifacts: archive
+  - id: source
+    artifacts: source
+
 snapshot:
   version_template: "{{ .Tag }}-next"
 
