@@ -17,8 +17,8 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.ServiceURL != DefaultServiceURL {
 		t.Errorf("ServiceURL = %v, want %v", cfg.ServiceURL, DefaultServiceURL)
 	}
-	if cfg.MaxBatchBytes != 4<<20 {
-		t.Errorf("MaxBatchBytes = %v, want 4MB", cfg.MaxBatchBytes)
+	if cfg.MaxBatchBytes != 16<<20 {
+		t.Errorf("MaxBatchBytes = %v, want 16MB", cfg.MaxBatchBytes)
 	}
 }
 

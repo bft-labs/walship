@@ -32,10 +32,10 @@ FILE=walship_Linux_x86_64.tar.gz  # pick the tarball for your OS/arch
 curl -LO https://github.com/bft-labs/walship/releases/latest/download/$FILE
 curl -LO https://github.com/bft-labs/walship/releases/latest/download/checksums.txt
 
-# Verify (Linux)
+# Verify checksum (Linux)
 grep "$FILE" checksums.txt | sha256sum --check -
 
-# Verify (macOS)
+# Verify checksum (macOS)
 grep "$FILE" checksums.txt | shasum -a 256 --check -
 
 # Install
@@ -44,7 +44,43 @@ sudo mv walship /usr/local/bin/
 ```
 
 Other platforms: see [Releases](https://github.com/bft-labs/walship/releases).
-Checksums (`checksums.txt`) are published with each release.
+
+### Verifying Release Integrity
+
+Every release includes cryptographic signatures and build provenance so you can verify that the binary was built by our CI pipeline and has not been tampered with.
+
+**1. Cosign signature verification (recommended)**
+
+Requires [cosign](https://docs.sigstore.dev/cosign/system_config/installation/). This verifies that `checksums.txt` was signed by our GitHub Actions release workflow using keyless (OIDC) signing:
+
+```bash
+cosign verify-blob \
+  --signature checksums.txt.sig \
+  --certificate checksums.txt.pem \
+  --certificate-identity-regexp "^https://github.com/bft-labs/walship/" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  checksums.txt
+```
+
+**2. SLSA build provenance verification**
+
+Requires [GitHub CLI](https://cli.github.com/). This verifies SLSA Build Level 2 provenance — proof that the binary was produced by our CI from the correct source commit:
+
+```bash
+gh attestation verify ./walship -R bft-labs/walship
+```
+
+**3. SHA256 checksum verification**
+
+```bash
+# Linux
+grep "$FILE" checksums.txt | sha256sum --check -
+
+# macOS
+grep "$FILE" checksums.txt | shasum -a 256 --check -
+```
+
+All three checks should pass before deploying the binary to a validator node.
 
 ## Quick Start (Not Recommended)
 
@@ -71,7 +107,8 @@ Description=Walship
 After=network-online.target
 
 [Service]
-User=validator
+User=walship
+Group=walship
 ExecStart=/usr/local/bin/walship \
   --node-home /home/validator/.osmosisd \
   --chain-binary-path /usr/local/bin/osmosisd \
@@ -80,11 +117,29 @@ ExecStart=/usr/local/bin/walship \
 Restart=always
 RestartSec=5
 
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadOnlyPaths=/home/validator/.osmosisd/data/log.wal
+ReadWritePaths=/home/validator/.osmosisd/data/log.wal/status.json
+
 [Install]
 WantedBy=multi-user.target
 ```
 
-Adjust `User`, `--node-home`, `--chain-binary-path`, `--chain-id`, and `--auth-key` to match your environment. If you prefer not to keep the key in the unit file, you can supply `WALSHIP_AUTH_KEY` (and other flags) via an `EnvironmentFile`.
+Adjust `User`, `Group`, `--node-home`, `--chain-binary-path`, `--chain-id`, `--auth-key`, and the `ReadOnlyPaths`/`ReadWritePaths` to match your environment. If you prefer not to keep the key in the unit file, you can supply `WALSHIP_AUTH_KEY` (and other flags) via an `EnvironmentFile`.
+
+**Security notes:**
+- We recommend running walship as a **dedicated `walship` user** (not the `validator` user) with only the minimum file permissions needed. Grant read access to the WAL directory and the chain binary only.
+- The hardening directives (`NoNewPrivileges`, `ProtectSystem=strict`, etc.) prevent privilege escalation, block device access, and restrict the filesystem to read-only except for explicitly allowed paths.
+- Create the dedicated user: `sudo useradd -r -s /usr/sbin/nologin walship && sudo usermod -aG validator walship`
 
 Enable and start:
 
