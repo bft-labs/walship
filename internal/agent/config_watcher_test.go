@@ -636,3 +636,99 @@ func TestConfigWatcher_SendsCapturedAtTimestamp(t *testing.T) {
 	}
 }
 
+// TestConfigWatcher_PeriodicRefresh verifies that the watcher periodically re-reads
+// and re-sends config even without fsnotify events.
+func TestConfigWatcher_PeriodicRefresh(t *testing.T) {
+	// Override refresh interval to something short for testing
+	origInterval := configRefreshInterval
+	configRefreshInterval = 200 * time.Millisecond
+	t.Cleanup(func() { configRefreshInterval = origInterval })
+
+	tmpDir := t.TempDir()
+	configDir := filepath.Join(tmpDir, "config")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("Failed to create config dir: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(configDir, "app.toml"), []byte(`version = 1`), 0644); err != nil {
+		t.Fatalf("Failed to create app.toml: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte(`version = 1`), 0644); err != nil {
+		t.Fatalf("Failed to create config.toml: %v", err)
+	}
+
+	var mu sync.Mutex
+	sendCount := 0
+	var lastAppContent string
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseMultipartForm(10 << 20); err == nil {
+			if file, _, err := r.FormFile("app_config"); err == nil {
+				data, _ := io.ReadAll(file)
+				mu.Lock()
+				lastAppContent = string(data)
+				mu.Unlock()
+				file.Close()
+			}
+		}
+		mu.Lock()
+		sendCount++
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	cfg := &Config{
+		NodeHome:   tmpDir,
+		ServiceURL: ts.URL,
+		ChainID:    "test-chain",
+		NodeID:     "test-node",
+	}
+
+	watcher := NewConfigWatcher(cfg)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go watcher.Run(ctx)
+
+	// Wait for initial send
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	initialCount := sendCount
+	mu.Unlock()
+	if initialCount < 1 {
+		t.Fatalf("sendCount = %d, want >= 1 after initial send", initialCount)
+	}
+
+	// Modify config on disk WITHOUT triggering fsnotify (simulate missed event)
+	// We just wait for the periodic ticker to pick it up.
+	// Overwrite via rename to reduce fsnotify noise — the ticker should still fire.
+	tmpFile := filepath.Join(configDir, "app.toml.tmp")
+	if err := os.WriteFile(tmpFile, []byte(`version = 2`), 0644); err != nil {
+		t.Fatalf("Failed to write temp file: %v", err)
+	}
+	if err := os.Rename(tmpFile, filepath.Join(configDir, "app.toml")); err != nil {
+		t.Fatalf("Failed to rename: %v", err)
+	}
+
+	// Wait for at least 2 ticker cycles (200ms * 2 + margin)
+	time.Sleep(700 * time.Millisecond)
+
+	mu.Lock()
+	afterCount := sendCount
+	content := lastAppContent
+	mu.Unlock()
+
+	// Periodic ticker should have triggered additional sends beyond the initial one
+	if afterCount <= initialCount {
+		t.Errorf("sendCount after periodic refresh = %d, want > %d", afterCount, initialCount)
+	}
+
+	// The periodic refresh should have picked up the new content from disk
+	if content != "version = 2" {
+		t.Errorf("lastAppContent = %q, want %q (periodic refresh should re-read from disk)", content, "version = 2")
+	}
+}
+

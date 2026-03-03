@@ -22,6 +22,10 @@ const (
 	ErrCodeReadError        = "READ_ERROR"
 )
 
+// configRefreshInterval is the periodic interval for forced config re-send.
+// This ensures config is re-read from disk and sent even if fsnotify misses events.
+var configRefreshInterval = 3 * time.Minute
+
 // ConfigWatcher monitors app.toml and config.toml changes via fsnotify.
 type ConfigWatcher struct {
 	cfg        *Config
@@ -63,6 +67,9 @@ func (w *ConfigWatcher) Run(ctx context.Context) {
 
 	w.sendConfigWithRetry(ctx)
 
+	refreshTicker := time.NewTicker(configRefreshInterval)
+	defer refreshTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -80,6 +87,10 @@ func (w *ConfigWatcher) Run(ctx context.Context) {
 				continue
 			}
 			w.debounceSend(ctx, 100*time.Millisecond)
+
+		case <-refreshTicker.C:
+			logger.Info().Msg("config watcher: periodic refresh triggered")
+			w.debounceSend(ctx, 0)
 
 		case err, ok := <-watcher.Errors:
 			if !ok {
