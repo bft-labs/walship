@@ -54,9 +54,10 @@ Every release includes cryptographic signatures and build provenance so you can 
 Requires [cosign](https://docs.sigstore.dev/cosign/system_config/installation/). This verifies that `checksums.txt` was signed by our GitHub Actions release workflow using keyless (OIDC) signing:
 
 ```bash
+curl -LO https://github.com/bft-labs/walship/releases/latest/download/checksums.txt.bundle
+
 cosign verify-blob \
-  --signature checksums.txt.sig \
-  --certificate checksums.txt.pem \
+  --bundle checksums.txt.bundle \
   --certificate-identity-regexp "^https://github.com/bft-labs/walship/" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   checksums.txt
